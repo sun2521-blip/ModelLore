@@ -5,8 +5,8 @@ from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from ml.config import ModelConfig
 from ml.training.model_factory import create_model
-from ml.evaluation.metrics import calculate_classification_metrics
 from ml.training.trainer import train
+from ml.evaluation.evaluator import evaluate_model
 
 
 def train_model():
@@ -28,6 +28,7 @@ def train_model():
     # 3. Create model
     model_config = ModelConfig(
     model_type="random_forest",
+    task_type="classification",
     parameters={
         "n_estimators": 50,
         "max_depth": 5,
@@ -43,11 +44,11 @@ def train_model():
     # 5. Predict
     predictions = model.predict(X_test)
 
-    # 6. Evaluate
-    metrics = calculate_classification_metrics(
-        y_test,
-        predictions,
-    )
+    metrics = evaluate_model(
+    task_type=model_config.task_type,
+    y_true=y_test,
+    y_pred=predictions,
+)
 
     # 7. Save model
     artifact_dir = Path("artifacts")
@@ -59,9 +60,10 @@ def train_model():
 
     # 8. Return structured result
     return {
-        "model": create_model(ModelConfig(model_type="random_forest", parameters={"n_estimators": 100, "random_state": 42})),
-        "metrics": metrics,
-        "model_path": str(model_path),
+    "model": "RandomForestClassifier",
+    "parameters": model_config.parameters,
+    "metrics": metrics,
+    "model_path": str(model_path),
     }
 
 
