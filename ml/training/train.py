@@ -30,13 +30,25 @@ def train_model(config_path="configs/iris.yaml"):
     )
 
     # Load dataset
-    dataset_name = config["dataset"]["name"]
-    if dataset_name != "iris":
+    dataset_settings = config["dataset"]
+    dataset_name = dataset_settings["name"]
+
+    if dataset_name == "iris":
+        iris = load_iris(as_frame=True)
+        X = iris.data
+        y = iris.target
+
+    elif dataset_name == "csv":
+        from ml.data.loader import load_dataset
+
+        X, y = load_dataset(
+            dataset_settings["path"],
+            dataset_settings["target_column"],
+        )
+
+    else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
-    iris = load_iris()
-    X = iris.data
-    y = iris.target
 
     # Split dataset
     X_train, X_test, y_train, y_test = train_test_split(
