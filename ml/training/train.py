@@ -1,13 +1,11 @@
-from pathlib import Path
 
-import joblib
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from ml.config import ModelConfig
 from ml.training.model_factory import create_model
 from ml.training.trainer import train
 from ml.evaluation.evaluator import evaluate_model
-
+from ml.artifacts import save_model
 
 def train_model():
     # 1. Load dataset
@@ -49,14 +47,10 @@ def train_model():
     y_true=y_test,
     y_pred=predictions,
 )
-
-    # 7. Save model
-    artifact_dir = Path("artifacts")
-    artifact_dir.mkdir(exist_ok=True)
-
-    model_path = artifact_dir / "random_forest_iris.joblib"
-
-    joblib.dump(model, model_path)
+    model_path = save_model(
+        model,
+        "random_forest_iris",
+    )
 
     # 8. Return structured result
     return {
