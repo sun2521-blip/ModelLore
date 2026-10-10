@@ -1,0 +1,14 @@
+
+dataset:
+  name: iris
+
+training:
+  random_seed: 42
+  test_size: 0.2
+
+model:
+  model_type: random_forest
+  task_type: classification
+  parameters:
+    n_estimators: 50
+    max_depth: 5
