@@ -1,4 +1,3 @@
-
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from ml.config import ModelConfig
@@ -6,8 +5,12 @@ from ml.training.model_factory import create_model
 from ml.training.trainer import train
 from ml.evaluation.evaluator import evaluate_model
 from ml.artifacts import save_model
+from ml.config import TrainingConfig
+from ml.reproducibility import set_random_seed
 
 def train_model():
+    training_config = TrainingConfig()
+    set_random_seed(training_config.random_seed)
     # 1. Load dataset
     iris = load_iris()
 
@@ -18,8 +21,8 @@ def train_model():
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=0.2,
-        random_state=42,
+        test_size=training_config.test_size,
+        random_state=training_config.random_seed,
         stratify=y,
     )
 
@@ -30,7 +33,7 @@ def train_model():
     parameters={
         "n_estimators": 50,
         "max_depth": 5,
-        "random_state": 42,
+        "random_state": training_config.random_seed,
     },
 )
 
