@@ -3,3 +3,35 @@ __pycache__/
 *.pyc
 .env
 .venv/
+# Generated model artifacts
+artifacts/
+*.joblib
+*.pkl
+*.pickle
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
