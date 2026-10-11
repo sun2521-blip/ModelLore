@@ -10,11 +10,14 @@ from ml.evaluation.evaluator import evaluate_model
 from ml.reproducibility import set_random_seed
 from ml.training.model_factory import create_model
 from ml.training.trainer import train
+from ml.lineage import save_lineage
+from ml.reproducibility import hash_config, hash_dataframe, set_random_seed
+from uuid import uuid4
 
 
 def train_model(config_path="configs/iris.yaml"):
     config = load_config(config_path)
-
+    
     training_config = TrainingConfig(
         random_seed=config["training"]["random_seed"],
         test_size=config["training"]["test_size"],
@@ -34,7 +37,7 @@ def train_model(config_path="configs/iris.yaml"):
     # Load dataset
     dataset_settings = config["dataset"]
     dataset_name = dataset_settings["name"]
-
+    
     if dataset_name == "iris":
         iris = load_iris(as_frame=True)
         X = iris.data
@@ -51,7 +54,9 @@ def train_model(config_path="configs/iris.yaml"):
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
-
+    #fingerprint dataset and config
+    dataset_hash = hash_dataframe(X, y)
+    config_hash = hash_config(config)
     # Split dataset
     X_train, X_test, y_train, y_test = train_test_split(
         X,
@@ -81,18 +86,27 @@ def train_model(config_path="configs/iris.yaml"):
     )
 
     # Save model
+    run_id = str(uuid4())
     model_path = save_model(
-        model,
-        f"random_forest_{dataset_name}",
+    model,
+    f"{model_config.model_type}_{dataset_name}_{run_id}",
+)
+    lineage_record = save_lineage(
+        dataset_hash=dataset_hash,
+        config_hash=config_hash,
+        parameters=model_config.parameters,
+        metrics=metrics,
+        artifact_path=str(model_path),
+        run_id=run_id,
     )
-
     return {
         "model": type(model).__name__,
         "parameters": model_config.parameters,
         "metrics": metrics,
         "model_path": str(model_path),
+        "run_id": lineage_record["run_id"],
+        "lineage_path": lineage_record["lineage_path"],
     }
-
 
 if __name__ == "__main__":
     result = train_model()
