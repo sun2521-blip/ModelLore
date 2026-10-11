@@ -1,4 +1,6 @@
 
+from sklearn.pipeline import Pipeline
+from ml.data.preprocessing import create_preprocessor
 from sklearn.datasets import load_iris
 from sklearn.model_selection import train_test_split
 from ml.artifacts import save_model
@@ -59,8 +61,15 @@ def train_model(config_path="configs/iris.yaml"):
         stratify=y,
     )
 
-    # Train model
-    model = create_model(model_config)
+    preprocessor = create_preprocessor(X_train)
+
+    model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("classifier", create_model(model_config)),
+        ]
+    )
+
     model = train(model, X_train, y_train)
 
     # Evaluate model
@@ -72,7 +81,10 @@ def train_model(config_path="configs/iris.yaml"):
     )
 
     # Save model
-    model_path = save_model(model, "random_forest_iris")
+    model_path = save_model(
+        model,
+        f"random_forest_{dataset_name}",
+    )
 
     return {
         "model": type(model).__name__,
