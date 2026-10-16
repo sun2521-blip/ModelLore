@@ -48,6 +48,8 @@ def save_lineage(
     status: str = "FINISHED",
     error: str | None = None,
     mlflow_artifact_uri: str | None = None,
+    config_path: str | None = None,
+    config_snapshot: dict | None = None,
 ) -> dict:
     lineage_dir = Path(lineage_dir)
     lineage_dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +71,8 @@ def save_lineage(
         "status": status,
         "error": error,
         "mlflow_artifact_uri": mlflow_artifact_uri,
+        "config_path": config_path,
+        "config_snapshot": config_snapshot,
     }
 
     record_path = lineage_dir / f"{run_id}.json"
@@ -77,4 +81,23 @@ def save_lineage(
         json.dump(record, file, indent=2, allow_nan=False)
 
     record["lineage_path"] = str(record_path)
+    return record
+
+
+def update_lineage_status(
+    record_path: str | Path,
+    status: str,
+    error: str | None = None,
+) -> dict:
+    record_path = Path(record_path)
+
+    with record_path.open("r", encoding="utf-8") as file:
+        record = json.load(file)
+
+    record["status"] = status
+    record["error"] = error
+
+    with record_path.open("w", encoding="utf-8") as file:
+        json.dump(record, file, indent=2, allow_nan=False)
+
     return record

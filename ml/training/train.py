@@ -13,7 +13,6 @@ from ml.config import ModelConfig, TrainingConfig
 from ml.config_loader import load_config
 from ml.data.preprocessing import create_preprocessor
 from ml.evaluation.evaluator import evaluate_model
-from ml.lineage import save_lineage
 from ml.reproducibility import (
     hash_config,
     hash_dataframe,
@@ -22,6 +21,8 @@ from ml.reproducibility import (
 from ml.tracking import log_training_results, start_run
 from ml.training.model_factory import create_model
 from ml.training.trainer import train
+from pathlib import Path
+from ml.lineage import save_lineage, update_lineage_status
 
 
 def train_model(config_path="configs/iris.yaml"):
@@ -145,6 +146,8 @@ def train_model(config_path="configs/iris.yaml"):
                 run_id=run_id,
                 status="FINISHED",
                 mlflow_artifact_uri=mlflow.get_artifact_uri(),
+                config_path=str(Path(config_path).resolve()),
+                config_snapshot=config,
             )
 
             # Attach lineage JSON to this MLflow run
@@ -176,17 +179,25 @@ def train_model(config_path="configs/iris.yaml"):
                     run_id=run_id,
                     status="FAILED",
                     error=error_message,
+                    config_path=str(Path(config_path).resolve()),
+                    config_snapshot=config,
                 )
+                lineage_path = failure_record["lineage_path"]
+            else:
+                update_lineage_status(
+                    lineage_record["lineage_path"],
+                    status="FAILED",
+                    error=error_message,
+                )
+                lineage_path = lineage_record["lineage_path"]
 
-                # Best effort: preserve the original exception if
-                # uploading the failure record also fails.
-                try:
-                    mlflow.log_artifact(
-                        failure_record["lineage_path"],
-                        artifact_path="lineage",
-                    )
-                except Exception:
-                    pass
+            try:
+                mlflow.log_artifact(
+                    lineage_path,
+                    artifact_path="lineage",
+                )
+            except Exception:
+                pass
 
             raise
 
@@ -198,6 +209,8 @@ def train_model(config_path="configs/iris.yaml"):
         "run_id": lineage_record["run_id"],
         "lineage_path": lineage_record["lineage_path"],
         "mlflow_run_id": mlflow_run.info.run_id,
+        "dataset_hash": dataset_hash,
+        "config_hash": config_hash,
     }
 
 

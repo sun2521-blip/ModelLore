@@ -1,10 +1,63 @@
 
 import json
+from pathlib import Path
 
 import mlflow
 import pytest
 
 import ml.training.train as training_module
+
+
+@pytest.fixture(autouse=True)
+def restore_tracking_uri():
+    previous_uri = mlflow.get_tracking_uri()
+    yield
+    mlflow.set_tracking_uri(previous_uri)
+
+
+def test_training_succeeds_end_to_end(tmp_path, monkeypatch):
+    tracking_db = tmp_path / "mlflow.db"
+    mlflow.set_tracking_uri(
+        f"sqlite:///{tracking_db.as_posix()}"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    config_path = tmp_path / "iris.yaml"
+    config_path.write_text(
+        """
+dataset:
+  name: iris
+training:
+  random_seed: 42
+  test_size: 0.2
+model:
+  model_type: random_forest
+  task_type: classification
+  parameters:
+    n_estimators: 5
+    max_depth: 3
+""",
+        encoding="utf-8",
+    )
+
+    result = training_module.train_model(
+        config_path=str(config_path)
+    )
+
+    assert result["metrics"]
+    assert result["dataset_hash"]
+    assert result["config_hash"]
+    assert Path(result["model_path"]).is_file()
+
+    lineage_path = Path(result["lineage_path"])
+    record = json.loads(lineage_path.read_text(encoding="utf-8"))
+
+    assert record["status"] == "FINISHED"
+    assert record["config_snapshot"]["dataset"]["name"] == "iris"
+
+    client = mlflow.tracking.MlflowClient()
+    run = client.get_run(result["mlflow_run_id"])
+    assert run.info.status == "FINISHED"
 
 
 def test_training_failure_records_lineage(tmp_path, monkeypatch):
