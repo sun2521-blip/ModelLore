@@ -38,3 +38,9 @@ Thumbs.db
 
 # generated model lineage records
 lineage/*.json
+
+
+# local mlflow tracking database
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal

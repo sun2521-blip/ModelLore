@@ -3,3 +3,4 @@ pandas
 scikit-learn
 joblib
 PyYAML
+mlflow==3.17.0
