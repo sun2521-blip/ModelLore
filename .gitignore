@@ -44,3 +44,5 @@ lineage/*.json
 mlflow.db
 mlflow.db-shm
 mlflow.db-wal
+mlruns/
+mlartifacts/

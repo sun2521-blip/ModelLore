@@ -1,4 +1,4 @@
-# ML-Flow-Hub# MLFlowHub
+# MLFlowHub
 
 ### Every model has a story. Let's find out what happened before it learned to predict the future.
 
