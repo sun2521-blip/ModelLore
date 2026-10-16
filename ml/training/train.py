@@ -1,4 +1,5 @@
 
+import traceback
 from uuid import uuid4
 
 import mlflow
@@ -86,6 +87,7 @@ def train_model(config_path="configs/iris.yaml"):
 
     # Create a unique ID for this training run
     run_id = str(uuid4())
+    lineage_record = None
 
     # Track the complete training run in MLflow
     with start_run(
@@ -96,51 +98,97 @@ def train_model(config_path="configs/iris.yaml"):
         mlflow.set_tag("config_hash", config_hash)
         mlflow.set_tag("lineage_run_id", run_id)
 
-        # Log training configuration
-        mlflow.log_params({
-            "dataset_name": dataset_name,
-            "random_seed": training_config.random_seed,
-            "test_size": training_config.test_size,
-            "model_type": model_config.model_type,
-            "task_type": model_config.task_type,
-            **model_config.parameters,
-        })
+        try:
+            # Log training configuration
+            mlflow.log_params({
+                "dataset_name": dataset_name,
+                "random_seed": training_config.random_seed,
+                "test_size": training_config.test_size,
+                "model_type": model_config.model_type,
+                "task_type": model_config.task_type,
+                **model_config.parameters,
+            })
 
-        model = train(model, X_train, y_train)
+            model = train(model, X_train, y_train)
 
-        # Evaluate model
-        predictions = model.predict(X_test)
-        metrics = evaluate_model(
-            task_type=model_config.task_type,
-            y_true=y_test,
-            y_pred=predictions,
-        )
+            # Evaluate model
+            predictions = model.predict(X_test)
+            metrics = evaluate_model(
+                task_type=model_config.task_type,
+                y_true=y_test,
+                y_pred=predictions,
+            )
 
-        mlflow.log_metrics(metrics)
+            mlflow.log_metrics(metrics)
 
-        # Save a unique model artifact
-        model_path = save_model(
-            model,
-            f"{model_config.model_type}_{dataset_name}_{run_id}",
-        )
+            # Save a unique model artifact
+            model_path = save_model(
+                model,
+                f"{model_config.model_type}_{dataset_name}_{run_id}",
+            )
 
-        # Log both the saved file and MLflow model
-        log_training_results(
-            parameters={},
-            metrics={},
-            model=model,
-            artifact_path=str(model_path),
-        )
+            # Log both the saved file and MLflow model
+            log_training_results(
+                parameters={},
+                metrics={},
+                model=model,
+                artifact_path=str(model_path),
+            )
 
-        # Save JSON lineage
-        lineage_record = save_lineage(
-            dataset_hash=dataset_hash,
-            config_hash=config_hash,
-            parameters=model_config.parameters,
-            metrics=metrics,
-            artifact_path=str(model_path),
-            run_id=run_id,
-        )
+            # Save successful lineage
+            lineage_record = save_lineage(
+                dataset_hash=dataset_hash,
+                config_hash=config_hash,
+                parameters=model_config.parameters,
+                metrics=metrics,
+                artifact_path=str(model_path),
+                run_id=run_id,
+                status="FINISHED",
+                mlflow_artifact_uri=mlflow.get_artifact_uri(),
+            )
+
+            # Attach lineage JSON to this MLflow run
+            mlflow.log_artifact(
+                lineage_record["lineage_path"],
+                artifact_path="lineage",
+            )
+
+        except Exception as exc:
+            error_message = f"{type(exc).__name__}: {exc}"
+
+            # Record failure details in MLflow
+            mlflow.set_tag("status", "FAILED")
+            mlflow.set_tag("failure_type", type(exc).__name__)
+            mlflow.set_tag("failure_message", str(exc))
+            mlflow.set_tag(
+                "failure_traceback",
+                traceback.format_exc()[-4000:],
+            )
+
+            # Create a failure record only if no lineage record exists
+            if lineage_record is None:
+                failure_record = save_lineage(
+                    dataset_hash=dataset_hash,
+                    config_hash=config_hash,
+                    parameters=model_config.parameters,
+                    metrics={},
+                    artifact_path="",
+                    run_id=run_id,
+                    status="FAILED",
+                    error=error_message,
+                )
+
+                # Best effort: preserve the original exception if
+                # uploading the failure record also fails.
+                try:
+                    mlflow.log_artifact(
+                        failure_record["lineage_path"],
+                        artifact_path="lineage",
+                    )
+                except Exception:
+                    pass
+
+            raise
 
     return {
         "model": type(model).__name__,
@@ -154,7 +202,13 @@ def train_model(config_path="configs/iris.yaml"):
 
 
 if __name__ == "__main__":
-    result = train_model()
+    import sys
+
+    config_path = (
+        sys.argv[1] if len(sys.argv) > 1 else "configs/iris.yaml"
+    )
+
+    result = train_model(config_path=config_path)
 
     print("Training completed.")
     print(f"Model: {result['model']}")

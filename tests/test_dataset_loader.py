@@ -69,6 +69,7 @@ def test_reject_non_csv_file(tmp_path):
     with pytest.raises(ValueError, match="Only CSV"):
         load_dataset(file_path, "target")
 
+
 def test_reject_missing_target_values(tmp_path):
     file_path = tmp_path / "missing_target.csv"
     pd.DataFrame({

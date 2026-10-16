@@ -31,7 +31,8 @@ def calculate_classification_metrics(y_true, y_pred):
             zero_division=0,
         ),
     }
-    
+
+
 def calculate_regression_metrics(y_true, y_pred):
     mse = mean_squared_error(y_true, y_pred)
 

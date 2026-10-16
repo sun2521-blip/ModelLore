@@ -33,7 +33,8 @@ def hash_config(config: dict) -> str:
     return hashlib.sha256(
         canonical_config.encode("utf-8")
     ).hexdigest()
-    
+
+
 def hash_dataframe(X: pd.DataFrame, y: pd.Series) -> str:
     """Create a SHA-256 fingerprint of features and target."""
     digest = hashlib.sha256()
@@ -54,3 +55,18 @@ def hash_dataframe(X: pd.DataFrame, y: pd.Series) -> str:
     digest.update(target_json.encode("utf-8"))
 
     return digest.hexdigest()
+
+def verify_hashes(
+    expected_dataset_hash: str,
+    actual_dataset_hash: str,
+    expected_config_hash: str,
+    actual_config_hash: str,
+) -> dict:
+    return {
+        "dataset_matches": expected_dataset_hash == actual_dataset_hash,
+        "config_matches": expected_config_hash == actual_config_hash,
+        "reproducible_inputs": (
+            expected_dataset_hash == actual_dataset_hash
+            and expected_config_hash == actual_config_hash
+        ),
+    }

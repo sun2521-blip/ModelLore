@@ -1,6 +1,8 @@
 
 dataset:
   name: iris
+  path: data/sample.csv
+  target_column: target
 
 training:
   random_seed: 42
@@ -12,8 +14,3 @@ model:
   parameters:
     n_estimators: 50
     max_depth: 5
-
-dataset:
-  name: iris
-  path: data/sample.csv
-  target_column: target

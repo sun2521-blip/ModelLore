@@ -11,7 +11,6 @@ def test_start_run_creates_active_run(tmp_path, monkeypatch):
         assert mlflow.active_run() is not None
 
 
-
 def test_log_training_results_logs_parameters_and_metrics(tmp_path):
     import joblib
     from sklearn.dummy import DummyClassifier

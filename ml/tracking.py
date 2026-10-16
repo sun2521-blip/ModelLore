@@ -17,4 +17,4 @@ def log_training_results(
     mlflow.log_metrics(metrics)
     mlflow.log_artifact(artifact_path, artifact_path="model_files")
     mlflow.sklearn.log_model(model, name="trained_model",
-    serialization_format="pickle",)
+                            serialization_format="pickle",)
