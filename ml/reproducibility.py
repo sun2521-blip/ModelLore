@@ -56,17 +56,3 @@ def hash_dataframe(X: pd.DataFrame, y: pd.Series) -> str:
 
     return digest.hexdigest()
 
-def verify_hashes(
-    expected_dataset_hash: str,
-    actual_dataset_hash: str,
-    expected_config_hash: str,
-    actual_config_hash: str,
-) -> dict:
-    return {
-        "dataset_matches": expected_dataset_hash == actual_dataset_hash,
-        "config_matches": expected_config_hash == actual_config_hash,
-        "reproducible_inputs": (
-            expected_dataset_hash == actual_dataset_hash
-            and expected_config_hash == actual_config_hash
-        ),
-    }

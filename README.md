@@ -146,6 +146,60 @@ The training pipeline loads the configuration, prepares the data, trains and eva
 
 The terminal prints the evaluation metrics, saved model path, lineage record path, and MLflow run ID.
 
+## Verify a Training Run
+
+MLFlowHub can verify a completed training run by loading its lineage record, rerunning training with the saved configuration, and comparing the results.
+
+### Run verification
+
+First, train a model:
+
+```bash
+python -m ml.training.train
+```
+
+The command prints the path to the generated lineage record. Pass that path to the verification command:
+
+```bash
+python -m ml.verification lineage/YOUR_RUN_ID.json
+```
+
+Replace `YOUR_RUN_ID.json` with the actual filename generated during training.
+
+### Example output
+
+```json
+{
+  "original_run_id": "original-run-id",
+  "verification_run_id": "verification-run-id",
+  "dataset_matches": true,
+  "config_matches": true,
+  "metrics_match": true,
+  "metric_comparison": {
+    "accuracy": true,
+    "precision": true,
+    "recall": true,
+    "f1": true
+  },
+  "verified": true
+}
+```
+
+The IDs and values above are illustrative.
+
+### What is checked?
+
+- **Dataset fingerprint:** Checks whether the dataset used for the rerun matches the original dataset.
+- **Configuration fingerprint:** Checks whether the saved configuration matches the original configuration.
+- **Metrics:** Compares the rerun's recorded metrics with the original metrics within the configured numerical tolerance.
+- **Overall result:** `verified` is `true` only when the dataset, configuration, and compared metrics all match.
+
+### Limitations
+
+Verification requires a saved configuration snapshot, an accessible dataset, and a compatible execution environment. Older lineage records without a configuration snapshot cannot be verified by rerunning.
+
+Matching metrics do not guarantee byte-for-byte identical model artifacts. Differences in dependency versions, hardware, or execution behavior may affect reproducibility.
+
 ### 5. Enter the experiment room
 
 Start the MLflow UI in a second terminal from the project directory:

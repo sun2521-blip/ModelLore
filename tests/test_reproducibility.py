@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-from ml.reproducibility import hash_dataframe, hash_config, verify_hashes
+from ml.reproducibility import hash_dataframe, hash_config
 
 
 def test_dataset_hash_is_repeatable():
@@ -25,16 +25,3 @@ def test_config_hash_is_repeatable():
     assert hash_config(config) == hash_config(config)
 
 
-def test_verify_hashes_match():
-    result = verify_hashes("data1", "data1", "config1", "config1")
-
-    assert result["dataset_matches"] is True
-    assert result["config_matches"] is True
-    assert result["reproducible_inputs"] is True
-
-
-def test_verify_hashes_detect_mismatch():
-    result = verify_hashes("data1", "data2", "config1", "config1")
-
-    assert result["dataset_matches"] is False
-    assert result["reproducible_inputs"] is False
