@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 .venv/
+*.egg-info/
 # Generated model artifacts
 artifacts/
 *.joblib
@@ -35,6 +36,8 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+# Logs
+*.log
 
 # generated model lineage records
 lineage/*.json
