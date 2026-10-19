@@ -7,3 +7,4 @@ mlflow==3.17.0
 pytest
 fastapi==0.143.0
 uvicorn[standard]==0.54.0
+httpx2
