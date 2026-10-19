@@ -123,8 +123,8 @@ The bigger plan is to connect these pieces to a proper backend and eventually gi
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/sun2521-blip/modellore.git
-cd modellore
+git clone https://github.com/sun2521-blip/ModelLore.git
+cd ModelLore
 ```
 
 ### 2. Set up the environment

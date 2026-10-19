@@ -85,7 +85,7 @@ def verify_lineage(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Verify a saved MLFlowHub training run."
+        description="Verify a saved ModelLore training run."
     )
     parser.add_argument("lineage_path", help="Path to a lineage JSON file")
     args = parser.parse_args()
