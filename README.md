@@ -374,7 +374,7 @@ curl -X POST "http://127.0.0.1:8000/predict" \
   -H "Content-Type: application/json" \
   -d '{
     "lineage_run_id": "LINEAGE_RUN_ID",
-    "instances": [
+    "features": [
       {
         "sepal length (cm)": 5.1,
         "sepal width (cm)": 3.5,
