@@ -148,6 +148,7 @@ def train_model(config_path="configs/iris.yaml"):
                 mlflow_artifact_uri=mlflow.get_artifact_uri(),
                 config_path=str(Path(config_path).resolve()),
                 config_snapshot=config,
+                feature_columns=X.columns.tolist(),
             )
 
             # Attach lineage JSON to this MLflow run

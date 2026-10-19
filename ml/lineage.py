@@ -50,6 +50,7 @@ def save_lineage(
     mlflow_artifact_uri: str | None = None,
     config_path: str | None = None,
     config_snapshot: dict | None = None,
+    feature_columns: list[str] | None = None,
 ) -> dict:
     lineage_dir = Path(lineage_dir)
     lineage_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +74,7 @@ def save_lineage(
         "mlflow_artifact_uri": mlflow_artifact_uri,
         "config_path": config_path,
         "config_snapshot": config_snapshot,
+        "feature_columns": feature_columns,
     }
 
     record_path = lineage_dir / f"{run_id}.json"
