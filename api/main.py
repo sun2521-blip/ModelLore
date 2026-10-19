@@ -46,7 +46,8 @@ def require_api_key(
         )
 
     if not x_api_key or not secrets.compare_digest(
-        x_api_key, expected_key
+        x_api_key.encode("utf-8"),
+        expected_key.encode("utf-8"),
     ):
         raise HTTPException(
             status_code=401,
@@ -57,7 +58,7 @@ def require_api_key(
 class TrainingRequest(BaseModel):
     config_name: Literal["iris", "csv-test"] = "iris"
     dataset_id: UUID | None = None
-
+    target_column: str | None = Field(default=None, min_length=1)
 
 class PredictionRequest(BaseModel):
     lineage_run_id: UUID
@@ -169,7 +170,10 @@ def start_training(request: TrainingRequest) -> dict:
                 )
 
             dataset_config["path"] = str(dataset_path)
-
+            if request.target_column is not None:
+                dataset_config["target_column"] = request.target_column
+            
+            
             generated_config = (
                 UPLOAD_DIR / f"{request.dataset_id}.yaml"
             )
