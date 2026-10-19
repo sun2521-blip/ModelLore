@@ -1,19 +1,8 @@
-artifacts/
-__pycache__/
-*.pyc
-.env
-.venv/
-*.egg-info/
-# Generated model artifacts
-artifacts/
-*.joblib
-*.pkl
-*.pickle
-
-# Python cache files
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 
 # Virtual environments
 .venv/
@@ -23,6 +12,26 @@ env/
 # Environment variables and secrets
 .env
 .env.*
+!.env.example
+
+# Generated model artifacts
+artifacts/
+*.joblib
+*.pkl
+*.pickle
+
+# Uploaded datasets and generated upload configs
+data/uploads/
+
+# Generated lineage records
+lineage/*.json
+
+# Local MLflow tracking data
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
 
 # Test and tooling caches
 .pytest_cache/
@@ -31,21 +40,11 @@ env/
 .coverage
 htmlcov/
 
-# Editor and OS files
+# Logs
+*.log
+
+# Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-# Logs
-*.log
-
-# generated model lineage records
-lineage/*.json
-
-
-# local mlflow tracking database
-mlflow.db
-mlflow.db-shm
-mlflow.db-wal
-mlruns/
-mlartifacts/

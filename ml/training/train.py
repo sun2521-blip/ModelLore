@@ -25,7 +25,13 @@ from pathlib import Path
 from ml.lineage import save_lineage, update_lineage_status
 
 
-def train_model(config_path="configs/iris.yaml"):
+def train_model(
+    config_path="configs/iris.yaml",
+    artifact_dir=None,
+    lineage_dir=None,
+):
+    artifact_dir = Path(artifact_dir) if artifact_dir else Path("artifacts")
+    lineage_dir = Path(lineage_dir) if lineage_dir else Path("lineage")
     config = load_config(config_path)
 
     training_config = TrainingConfig(
@@ -43,7 +49,8 @@ def train_model(config_path="configs/iris.yaml"):
         task_type=model_settings["task_type"],
         parameters=model_parameters,
     )
-
+    feature_columns = None
+    
     # Load dataset
     dataset_settings = config["dataset"]
     dataset_name = dataset_settings["name"]
@@ -64,6 +71,8 @@ def train_model(config_path="configs/iris.yaml"):
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
+    feature_columns = X.columns.tolist()
+    
     # Fingerprint the dataset and configuration
     dataset_hash = hash_dataframe(X, y)
     config_hash = hash_config(config)
@@ -126,6 +135,7 @@ def train_model(config_path="configs/iris.yaml"):
             model_path = save_model(
                 model,
                 f"{model_config.model_type}_{dataset_name}_{run_id}",
+                artifact_dir=artifact_dir,
             )
 
             # Log both the saved file and MLflow model
@@ -144,11 +154,13 @@ def train_model(config_path="configs/iris.yaml"):
                 metrics=metrics,
                 artifact_path=str(model_path),
                 run_id=run_id,
+                lineage_dir=lineage_dir,
+                feature_columns=feature_columns,
                 status="FINISHED",
                 mlflow_artifact_uri=mlflow.get_artifact_uri(),
                 config_path=str(Path(config_path).resolve()),
                 config_snapshot=config,
-                feature_columns=X.columns.tolist(),
+                
             )
 
             # Attach lineage JSON to this MLflow run
@@ -178,6 +190,8 @@ def train_model(config_path="configs/iris.yaml"):
                     metrics={},
                     artifact_path="",
                     run_id=run_id,
+                    lineage_dir=lineage_dir,
+                    feature_columns=feature_columns,
                     status="FAILED",
                     error=error_message,
                     config_path=str(Path(config_path).resolve()),
@@ -191,7 +205,9 @@ def train_model(config_path="configs/iris.yaml"):
                     error=error_message,
                 )
                 lineage_path = lineage_record["lineage_path"]
-
+            
+            
+            
             try:
                 mlflow.log_artifact(
                     lineage_path,

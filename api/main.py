@@ -1,35 +1,66 @@
 
+import csv
 import json
+import os
+import secrets
 from pathlib import Path
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import mlflow
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+import yaml
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    UploadFile,
+)
 from pydantic import BaseModel, Field
 
 from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
 
 
-app = FastAPI(
-    title="MLFlowHub API",
-    version="0.2.0",
-)
+app = FastAPI(title="MLFlowHub API", version="0.2.0")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = PROJECT_ROOT / "configs"
 ARTIFACT_DIR = (PROJECT_ROOT / "artifacts").resolve()
 LINEAGE_DIR = PROJECT_ROOT / "lineage"
+UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
+def require_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> None:
+    expected_key = os.getenv("MLFLOWHUB_API_KEY")
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=503,
+            detail="API authentication is not configured",
+        )
+
+    if not x_api_key or not secrets.compare_digest(
+        x_api_key, expected_key
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key",
+        )
 
 
 class TrainingRequest(BaseModel):
     config_name: Literal["iris", "csv-test"] = "iris"
+    dataset_id: UUID | None = None
 
 
 class PredictionRequest(BaseModel):
-    run_id: UUID
+    lineage_run_id: UUID
     features: list[dict[str, float | int | str | bool | None]] = Field(
         min_length=1
     )
@@ -40,9 +71,121 @@ def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-@app.post("/train")
+@app.post(
+    "/datasets/upload",
+    dependencies=[Depends(require_api_key)],
+)
+async def upload_dataset(file: UploadFile = File(...)) -> dict:
+    if not file.filename or Path(file.filename).suffix.lower() != ".csv":
+        raise HTTPException(
+            status_code=415,
+            detail="Only CSV files are supported",
+        )
+
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="CSV upload exceeds the 10 MiB limit",
+        )
+
+    if not content:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded CSV is empty",
+        )
+
+    try:
+        decoded = content.decode("utf-8-sig")
+        header = next(csv.reader(decoded.splitlines()), None)
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="CSV must be valid UTF-8",
+        ) from exc
+
+    if (
+        not header
+        or len(header) != len(set(header))
+        or any(not column.strip() for column in header)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="CSV must have unique, non-empty column headers",
+        )
+
+    dataset_id = uuid4()
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    destination = UPLOAD_DIR / f"{dataset_id}.csv"
+    destination.write_bytes(content)
+
+    return {
+        "dataset_id": str(dataset_id),
+        "filename": destination.name,
+        "size_bytes": len(content),
+    }
+
+
+@app.post("/train", dependencies=[Depends(require_api_key)])
 def start_training(request: TrainingRequest) -> dict:
-    config_path = CONFIG_DIR / f"{request.config_name}.yaml"
+    if request.dataset_id:
+        dataset_path = (
+            UPLOAD_DIR / f"{request.dataset_id}.csv"
+        ).resolve()
+
+        if not dataset_path.is_relative_to(UPLOAD_DIR.resolve()):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid dataset ID",
+            )
+
+        if not dataset_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="Uploaded dataset not found",
+            )
+
+        template_path = CONFIG_DIR / "csv-test.yaml"
+
+        if not template_path.is_file():
+            raise HTTPException(
+                status_code=500,
+                detail="CSV training configuration is missing",
+            )
+
+        try:
+            config = yaml.safe_load(
+                template_path.read_text(encoding="utf-8")
+            )
+
+            if not isinstance(config, dict):
+                raise ValueError("Invalid CSV training configuration")
+
+            dataset_config = config.get("dataset")
+            if not isinstance(dataset_config, dict):
+                raise ValueError(
+                    "CSV training configuration needs a dataset section"
+                )
+
+            dataset_config["path"] = str(dataset_path)
+
+            generated_config = (
+                UPLOAD_DIR / f"{request.dataset_id}.yaml"
+            )
+            generated_config.write_text(
+                yaml.safe_dump(config, sort_keys=False),
+                encoding="utf-8",
+            )
+            config_path = generated_config
+
+        except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to prepare dataset training configuration",
+            ) from exc
+    else:
+        config_path = CONFIG_DIR / f"{request.config_name}.yaml"
 
     if not config_path.is_file():
         raise HTTPException(
@@ -51,13 +194,20 @@ def start_training(request: TrainingRequest) -> dict:
         )
 
     try:
-        result = train_model(config_path=str(config_path))
+        result = train_model(
+            config_path=str(config_path),
+            artifact_dir=ARTIFACT_DIR,
+            lineage_dir=LINEAGE_DIR,
+        )
     except (ValueError, FileNotFoundError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
     return {
         "status": "completed",
-        "run_id": result.get("run_id"),
+        "lineage_run_id": result.get("run_id"),
         "mlflow_run_id": result.get("mlflow_run_id"),
         "metrics": result.get("metrics"),
         "parameters": result.get("parameters"),
@@ -65,10 +215,13 @@ def start_training(request: TrainingRequest) -> dict:
     }
 
 
-@app.get("/runs/{run_id}")
-def get_run(run_id: str) -> dict:
+@app.get(
+    "/runs/{mlflow_run_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_run(mlflow_run_id: str) -> dict:
     try:
-        run = mlflow.get_run(run_id)
+        run = mlflow.get_run(mlflow_run_id)
     except mlflow.MlflowException as exc:
         error_code = getattr(exc, "error_code", None)
         message = str(exc).lower()
@@ -80,16 +233,16 @@ def get_run(run_id: str) -> dict:
         ):
             raise HTTPException(
                 status_code=404,
-                detail="Training run not found",
+                detail="MLflow run not found",
             ) from exc
 
         raise HTTPException(
             status_code=500,
-            detail="Unable to retrieve training run",
+            detail="Unable to retrieve MLflow run",
         ) from exc
 
     return {
-        "run_id": run.info.run_id,
+        "mlflow_run_id": run.info.run_id,
         "experiment_id": run.info.experiment_id,
         "status": run.info.status,
         "parameters": run.data.params,
@@ -97,9 +250,9 @@ def get_run(run_id: str) -> dict:
     }
 
 
-@app.post("/predict")
+@app.post("/predict", dependencies=[Depends(require_api_key)])
 def make_prediction(request: PredictionRequest) -> dict:
-    lineage_path = LINEAGE_DIR / f"{request.run_id}.json"
+    lineage_path = LINEAGE_DIR / f"{request.lineage_run_id}.json"
 
     try:
         with lineage_path.open("r", encoding="utf-8") as file:
@@ -107,7 +260,7 @@ def make_prediction(request: PredictionRequest) -> dict:
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404,
-            detail="Training run not found",
+            detail="Lineage run not found",
         ) from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise HTTPException(
@@ -125,14 +278,10 @@ def make_prediction(request: PredictionRequest) -> dict:
     if not feature_columns:
         raise HTTPException(
             status_code=409,
-            detail=(
-                "This run has no saved feature-column metadata. "
-                "Train a new model before using prediction."
-            ),
+            detail="This run has no saved feature-column metadata",
         )
 
     expected_columns = set(feature_columns)
-
     for row in request.features:
         if set(row.keys()) != expected_columns:
             raise HTTPException(
@@ -191,7 +340,7 @@ def make_prediction(request: PredictionRequest) -> dict:
         ) from exc
 
     return {
-        "run_id": str(request.run_id),
+        "lineage_run_id": str(request.lineage_run_id),
         "predictions": predictions.tolist(),
         "count": len(predictions),
     }
