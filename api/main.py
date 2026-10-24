@@ -23,6 +23,16 @@ from pydantic import BaseModel, Field
 from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
 
+from sqlalchemy import text
+from db.session import engine, get_db
+import hashlib
+
+from db.models import Dataset
+from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+
+from db.models import Dataset, TrainingJob, ModelRecord
+
 
 app = FastAPI(title="ModelLore API", version="0.2.0")
 
@@ -72,11 +82,32 @@ def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
+
+@app.get("/health/database")
+def database_health():
+    """Check whether the configured application database is reachable."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {"database": "connected"}
+    except Exception:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=503,
+            detail="Application database unavailable",
+        )
+
+
+
 @app.post(
     "/datasets/upload",
     dependencies=[Depends(require_api_key)],
 )
-async def upload_dataset(file: UploadFile = File(...)) -> dict:
+async def upload_dataset(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
     if not file.filename or Path(file.filename).suffix.lower() != ".csv":
         raise HTTPException(
             status_code=415,
@@ -119,17 +150,47 @@ async def upload_dataset(file: UploadFile = File(...)) -> dict:
     dataset_id = uuid4()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     destination = UPLOAD_DIR / f"{dataset_id}.csv"
-    destination.write_bytes(content)
+
+    try:
+        destination.write_bytes(content)
+
+        dataset = Dataset(
+            id=dataset_id,
+            name=Path(file.filename).stem,
+            original_filename=Path(file.filename).name,
+            file_path=str(destination),
+            sha256=hashlib.sha256(content).hexdigest(),
+            column_count=len(header),
+        )
+        db.add(dataset)
+        db.commit()
+
+    except Exception as exc:
+        db.rollback()
+        destination.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save dataset metadata",
+        ) from exc
 
     return {
         "dataset_id": str(dataset_id),
         "filename": destination.name,
         "size_bytes": len(content),
+        "sha256": dataset.sha256,
+        "column_count": dataset.column_count,
     }
 
 
+
 @app.post("/train", dependencies=[Depends(require_api_key)])
-def start_training(request: TrainingRequest) -> dict:
+def start_training(
+    request: TrainingRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    dataset_path = None
+    dataset_record = None
+
     if request.dataset_id:
         dataset_path = (
             UPLOAD_DIR / f"{request.dataset_id}.csv"
@@ -146,6 +207,9 @@ def start_training(request: TrainingRequest) -> dict:
                 status_code=404,
                 detail="Uploaded dataset not found",
             )
+
+        dataset_record = db.get(Dataset, request.dataset_id)
+        
 
         template_path = CONFIG_DIR / "csv-test.yaml"
 
@@ -172,11 +236,8 @@ def start_training(request: TrainingRequest) -> dict:
             dataset_config["path"] = str(dataset_path)
             if request.target_column is not None:
                 dataset_config["target_column"] = request.target_column
-            
-            
-            generated_config = (
-                UPLOAD_DIR / f"{request.dataset_id}.yaml"
-            )
+
+            generated_config = UPLOAD_DIR / f"{request.dataset_id}.yaml"
             generated_config.write_text(
                 yaml.safe_dump(config, sort_keys=False),
                 encoding="utf-8",
@@ -197,6 +258,24 @@ def start_training(request: TrainingRequest) -> dict:
             detail="Training configuration not found",
         )
 
+    job = TrainingJob(
+        dataset_id=dataset_record.id if dataset_record else None,
+        config_name=request.config_name,
+        status="RUNNING",
+        started_at=datetime.now(timezone.utc),
+    )
+
+    try:
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to create training job",
+        ) from exc
+
     try:
         result = train_model(
             config_path=str(config_path),
@@ -204,19 +283,70 @@ def start_training(request: TrainingRequest) -> dict:
             lineage_dir=LINEAGE_DIR,
         )
     except (ValueError, FileNotFoundError) as exc:
+        job.status = "FAILED"
+        job.error_message = str(exc)
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
         raise HTTPException(
             status_code=400,
             detail=str(exc),
         ) from exc
+    except Exception as exc:
+        job.status = "FAILED"
+        job.error_message = str(exc)
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Training failed unexpectedly",
+        ) from exc
+
+    job.status = "FINISHED"
+    job.mlflow_run_id = result.get("mlflow_run_id")
+    job.completed_at = datetime.now(timezone.utc)
+
+    artifact_path = None
+    lineage_path = result.get("lineage_path")
+    lineage_run_id = result.get("run_id")
+
+    if lineage_path:
+        try:
+            with Path(lineage_path).open("r", encoding="utf-8") as file:
+                lineage = json.load(file)
+            artifact_path = lineage.get("artifact_path")
+        except (OSError, json.JSONDecodeError):
+            artifact_path = None
+
+    if artifact_path:
+        db.add(
+            ModelRecord(
+                training_job_id=job.id,
+                name=request.config_name,
+                artifact_path=str(artifact_path),
+                metrics=result.get("metrics"),
+            )
+        )
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Training completed but its database record could not be saved",
+        ) from exc
 
     return {
         "status": "completed",
-        "lineage_run_id": result.get("run_id"),
+        "lineage_run_id": lineage_run_id,
         "mlflow_run_id": result.get("mlflow_run_id"),
         "metrics": result.get("metrics"),
         "parameters": result.get("parameters"),
-        "lineage_path": result.get("lineage_path"),
+        "lineage_path": lineage_path,
     }
+
 
 
 @app.get(

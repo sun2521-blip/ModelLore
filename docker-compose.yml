@@ -1,0 +1,36 @@
+
+services:
+  db:
+    image: postgres:16
+    container_name: modellore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: modellore
+      POSTGRES_USER: modellore
+      POSTGRES_PASSWORD: modellore_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U modellore -d modellore"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: DockerFile
+    container_name: modellore-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://modellore:modellore_dev_password@db:5432/modellore
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
