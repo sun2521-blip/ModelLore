@@ -48,3 +48,8 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# ModelLore application database
+modellore.db
+modellore.db-shm
+modellore.db-wal
