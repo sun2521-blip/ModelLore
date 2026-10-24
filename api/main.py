@@ -1,8 +1,9 @@
-
 import csv
+import hashlib
 import json
 import os
 import secrets
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -19,19 +20,13 @@ from fastapi import (
     UploadFile,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from db.models import Dataset, ModelRecord, TrainingJob
+from db.session import engine, get_db
 from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
-
-from sqlalchemy import text
-from db.session import engine, get_db
-import hashlib
-
-from db.models import Dataset
-from sqlalchemy.orm import Session
-from datetime import datetime, timezone
-
-from db.models import Dataset, TrainingJob, ModelRecord
 
 
 app = FastAPI(title="ModelLore API", version="0.2.0")
@@ -82,7 +77,6 @@ def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
-
 @app.get("/health/database")
 def database_health():
     """Check whether the configured application database is reachable."""
@@ -91,13 +85,10 @@ def database_health():
             connection.execute(text("SELECT 1"))
         return {"database": "connected"}
     except Exception:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=503,
             detail="Application database unavailable",
         )
-
 
 
 @app.post(
@@ -182,7 +173,6 @@ async def upload_dataset(
     }
 
 
-
 @app.post("/train", dependencies=[Depends(require_api_key)])
 def start_training(
     request: TrainingRequest,
@@ -209,7 +199,7 @@ def start_training(
             )
 
         dataset_record = db.get(Dataset, request.dataset_id)
-        
+
 
         template_path = CONFIG_DIR / "csv-test.yaml"
 
@@ -346,7 +336,6 @@ def start_training(
         "parameters": result.get("parameters"),
         "lineage_path": lineage_path,
     }
-
 
 
 @app.get(
