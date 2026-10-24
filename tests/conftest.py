@@ -1,4 +1,6 @@
 
+"""Shared fixtures for API tests."""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -12,6 +14,14 @@ from db import models  # Registers Dataset, TrainingJob, and ModelRecord
 
 @pytest.fixture
 def api_client(monkeypatch):
+from db import models  # Register all database models
+from db.base import Base
+from db.session import get_db
+
+
+@pytest.fixture
+def api_client(monkeypatch):
+    """Create an API test client with an isolated SQLite database."""
     monkeypatch.setenv("MLFLOWHUB_API_KEY", "test-api-key")
 
     test_engine = create_engine(
@@ -23,6 +33,12 @@ def api_client(monkeypatch):
         autocommit=False,
         autoflush=False,
         bind=test_engine,
+
+    TestingSessionLocal = sessionmaker(
+        bind=test_engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
     )
 
     Base.metadata.create_all(bind=test_engine)
@@ -42,5 +58,6 @@ def api_client(monkeypatch):
             yield client
     finally:
         app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=test_engine)
         test_engine.dispose()
