@@ -28,7 +28,7 @@ from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
 from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
-
+import io
 
 app = FastAPI(title="ModelLore API", version="0.2.0")
 
@@ -120,14 +120,18 @@ async def upload_dataset(
             detail="Uploaded CSV is empty",
         )
 
+    
     try:
         decoded = content.decode("utf-8-sig")
-        header = next(csv.reader(decoded.splitlines()), None)
+        reader = csv.reader(io.StringIO(decoded, newline=""), strict=True)
+        header = next(reader, None)
+        row_count = sum(1 for row in reader if row)
     except (UnicodeDecodeError, csv.Error) as exc:
         raise HTTPException(
             status_code=400,
             detail="CSV must be valid UTF-8",
         ) from exc
+
 
     if (
         not header
@@ -153,6 +157,7 @@ async def upload_dataset(
             file_path=str(destination),
             sha256=hashlib.sha256(content).hexdigest(),
             column_count=len(header),
+            row_count=row_count,
         )
         db.add(dataset)
         db.commit()
@@ -171,6 +176,7 @@ async def upload_dataset(
         "size_bytes": len(content),
         "sha256": dataset.sha256,
         "column_count": dataset.column_count,
+        "row_count": dataset.row_count,
     }
 
 

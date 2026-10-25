@@ -30,6 +30,7 @@ def test_upload_valid_csv_returns_dataset_id(
 
     assert body["filename"] == f"{dataset_id}.csv"
     assert body["size_bytes"] == len(VALID_CSV)
+    assert body["row_count"] == 2
     assert (upload_dir / f"{dataset_id}.csv").read_bytes() == VALID_CSV
 
     with db_session_factory() as session:
@@ -40,6 +41,7 @@ def test_upload_valid_csv_returns_dataset_id(
         assert saved_dataset.original_filename == "dataset.csv"
         assert saved_dataset.sha256 == body["sha256"]
         assert saved_dataset.column_count == 3
+        assert saved_dataset.row_count == 2
 
 def test_upload_rejects_non_csv_file(api_client):
     response = api_client.post(
@@ -187,3 +189,25 @@ def test_train_uses_custom_target_column(
     assert generated_config["dataset"]["path"] == str(
         (upload_dir / f"{dataset_id}.csv").resolve()
     )
+
+
+
+def test_upload_counts_rows_with_embedded_newlines(
+    api_client, tmp_path, monkeypatch
+):
+    upload_dir = tmp_path / "uploads"
+    monkeypatch.setattr(main, "UPLOAD_DIR", upload_dir)
+
+    content = (
+        b"feature,target\n"
+        b'"first line\nsecond line",0\n'
+        b'"another\nmultiline value",1\n'
+    )
+
+    response = api_client.post(
+        "/datasets/upload",
+        files={"file": ("multiline.csv", content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["row_count"] == 2
