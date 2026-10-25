@@ -17,6 +17,7 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Query,
     UploadFile,
 )
 from pydantic import BaseModel, Field
@@ -171,6 +172,84 @@ async def upload_dataset(
         "sha256": dataset.sha256,
         "column_count": dataset.column_count,
     }
+
+
+
+@app.get(
+    "/datasets",
+    dependencies=[Depends(require_api_key)],
+)
+def list_datasets(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List uploaded datasets, newest first."""
+    total = db.query(Dataset).count()
+    datasets = (
+        db.query(Dataset)
+        .order_by(Dataset.created_at.desc(), Dataset.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "dataset_id": str(dataset.id),
+                "name": dataset.name,
+                "original_filename": dataset.original_filename,
+                "sha256": dataset.sha256,
+                "row_count": dataset.row_count,
+                "column_count": dataset.column_count,
+                "target_column": dataset.target_column,
+                "created_at": (
+                    dataset.created_at.isoformat()
+                    if dataset.created_at
+                    else None
+                ),
+            }
+            for dataset in datasets
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get(
+    "/datasets/{dataset_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_dataset(
+    dataset_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Retrieve metadata for one dataset."""
+    dataset = db.get(Dataset, dataset_id)
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found",
+        )
+
+    return {
+        "dataset_id": str(dataset.id),
+        "name": dataset.name,
+        "original_filename": dataset.original_filename,
+        "sha256": dataset.sha256,
+        "row_count": dataset.row_count,
+        "column_count": dataset.column_count,
+        "target_column": dataset.target_column,
+        "created_at": (
+            dataset.created_at.isoformat()
+            if dataset.created_at
+            else None
+        ),
+    }
+
 
 
 @app.post("/train", dependencies=[Depends(require_api_key)])
