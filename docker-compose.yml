@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: modellore
       POSTGRES_USER: modellore
-      POSTGRES_PASSWORD: modellore_dev_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-modellore_dev_password}
     ports:
       - "5432:5432"
     volumes:
@@ -21,13 +21,19 @@ services:
   api:
     build:
       context: .
-      dockerfile: DockerFile
+      dockerfile: Dockerfile
     container_name: modellore-api
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://modellore:modellore_dev_password@db:5432/modellore
+      DATABASE_URL: postgresql+psycopg://modellore:${POSTGRES_PASSWORD:-modellore_dev_password}@db:5432/modellore
+      MLFLOWHUB_API_KEY: ${MLFLOWHUB_API_KEY:?Set MLFLOWHUB_API_KEY in your environment or .env file}
     ports:
       - "8000:8000"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./artifacts:/app/artifacts
+      - ./lineage:/app/lineage
+      - ./mlruns:/app/mlruns
     depends_on:
       db:
         condition: service_healthy

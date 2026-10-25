@@ -2,6 +2,8 @@
 from unittest.mock import MagicMock, patch
 
 import mlflow
+from sqlalchemy import select
+from db.models import TrainingJob
 
 
 def test_train_iris_returns_training_results(api_client):
@@ -38,7 +40,10 @@ def test_train_rejects_unknown_config_name(api_client):
     assert response.status_code == 422
 
 
-def test_train_handles_training_value_error(api_client):
+
+def test_train_handles_training_value_error(
+    api_client, db_session_factory
+):
     with patch(
         "api.main.train_model",
         side_effect=ValueError("Invalid training configuration"),
@@ -50,6 +55,17 @@ def test_train_handles_training_value_error(api_client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid training configuration"
+
+    with db_session_factory() as session:
+        failed_job = session.scalar(
+            select(TrainingJob).where(
+                TrainingJob.error_message == "Invalid training configuration"
+            )
+        )
+
+        assert failed_job is not None
+        assert failed_job.status == "FAILED"
+        assert failed_job.completed_at is not None
 
 
 def test_get_run_returns_run_details(api_client):
