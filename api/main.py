@@ -249,6 +249,100 @@ def get_dataset(
             else None
         ),
     }
+    
+    
+
+@app.get(
+    "/jobs",
+    dependencies=[Depends(require_api_key)],
+)
+def list_training_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List training jobs, newest first."""
+    total = db.query(TrainingJob).count()
+    jobs = (
+        db.query(TrainingJob)
+        .order_by(
+            TrainingJob.created_at.desc(),
+            TrainingJob.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "job_id": str(job.id),
+                "dataset_id": (
+                    str(job.dataset_id) if job.dataset_id else None
+                ),
+                "config_name": job.config_name,
+                "status": job.status,
+                "mlflow_run_id": job.mlflow_run_id,
+                "metrics": job.model.metrics if job.model else None,
+                "error_message": job.error_message,
+                "created_at": (
+                    job.created_at.isoformat()
+                    if job.created_at else None
+                ),
+                "started_at": (
+                    job.started_at.isoformat()
+                    if job.started_at else None
+                ),
+                "completed_at": (
+                    job.completed_at.isoformat()
+                    if job.completed_at else None
+                ),
+            }
+            for job in jobs
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get(
+    "/jobs/{job_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_training_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Retrieve details for one training job."""
+    job = db.get(TrainingJob, job_id)
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Training job not found",
+        )
+
+    return {
+        "job_id": str(job.id),
+        "dataset_id": str(job.dataset_id) if job.dataset_id else None,
+        "config_name": job.config_name,
+        "status": job.status,
+        "mlflow_run_id": job.mlflow_run_id,
+        "metrics": job.model.metrics if job.model else None,
+        "error_message": job.error_message,
+        "created_at": (
+            job.created_at.isoformat() if job.created_at else None
+        ),
+        "started_at": (
+            job.started_at.isoformat() if job.started_at else None
+        ),
+        "completed_at": (
+            job.completed_at.isoformat() if job.completed_at else None
+        ),
+    }
+
 
 
 
