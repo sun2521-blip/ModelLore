@@ -17,6 +17,7 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Query,
     UploadFile,
 )
 from pydantic import BaseModel, Field
@@ -171,6 +172,178 @@ async def upload_dataset(
         "sha256": dataset.sha256,
         "column_count": dataset.column_count,
     }
+
+
+
+@app.get(
+    "/datasets",
+    dependencies=[Depends(require_api_key)],
+)
+def list_datasets(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List uploaded datasets, newest first."""
+    total = db.query(Dataset).count()
+    datasets = (
+        db.query(Dataset)
+        .order_by(Dataset.created_at.desc(), Dataset.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "dataset_id": str(dataset.id),
+                "name": dataset.name,
+                "original_filename": dataset.original_filename,
+                "sha256": dataset.sha256,
+                "row_count": dataset.row_count,
+                "column_count": dataset.column_count,
+                "target_column": dataset.target_column,
+                "created_at": (
+                    dataset.created_at.isoformat()
+                    if dataset.created_at
+                    else None
+                ),
+            }
+            for dataset in datasets
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get(
+    "/datasets/{dataset_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_dataset(
+    dataset_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Retrieve metadata for one dataset."""
+    dataset = db.get(Dataset, dataset_id)
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found",
+        )
+
+    return {
+        "dataset_id": str(dataset.id),
+        "name": dataset.name,
+        "original_filename": dataset.original_filename,
+        "sha256": dataset.sha256,
+        "row_count": dataset.row_count,
+        "column_count": dataset.column_count,
+        "target_column": dataset.target_column,
+        "created_at": (
+            dataset.created_at.isoformat()
+            if dataset.created_at
+            else None
+        ),
+    }
+    
+    
+
+@app.get(
+    "/jobs",
+    dependencies=[Depends(require_api_key)],
+)
+def list_training_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List training jobs, newest first."""
+    total = db.query(TrainingJob).count()
+    jobs = (
+        db.query(TrainingJob)
+        .order_by(
+            TrainingJob.created_at.desc(),
+            TrainingJob.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "job_id": str(job.id),
+                "dataset_id": (
+                    str(job.dataset_id) if job.dataset_id else None
+                ),
+                "config_name": job.config_name,
+                "status": job.status,
+                "mlflow_run_id": job.mlflow_run_id,
+                "metrics": job.model.metrics if job.model else None,
+                "error_message": job.error_message,
+                "created_at": (
+                    job.created_at.isoformat()
+                    if job.created_at else None
+                ),
+                "started_at": (
+                    job.started_at.isoformat()
+                    if job.started_at else None
+                ),
+                "completed_at": (
+                    job.completed_at.isoformat()
+                    if job.completed_at else None
+                ),
+            }
+            for job in jobs
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get(
+    "/jobs/{job_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_training_job(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Retrieve details for one training job."""
+    job = db.get(TrainingJob, job_id)
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Training job not found",
+        )
+
+    return {
+        "job_id": str(job.id),
+        "dataset_id": str(job.dataset_id) if job.dataset_id else None,
+        "config_name": job.config_name,
+        "status": job.status,
+        "mlflow_run_id": job.mlflow_run_id,
+        "metrics": job.model.metrics if job.model else None,
+        "error_message": job.error_message,
+        "created_at": (
+            job.created_at.isoformat() if job.created_at else None
+        ),
+        "started_at": (
+            job.started_at.isoformat() if job.started_at else None
+        ),
+        "completed_at": (
+            job.completed_at.isoformat() if job.completed_at else None
+        ),
+    }
+
+
 
 
 @app.post("/train", dependencies=[Depends(require_api_key)])
@@ -336,6 +509,91 @@ def start_training(
         "parameters": result.get("parameters"),
         "lineage_path": lineage_path,
     }
+
+
+
+@app.get(
+    "/models",
+    dependencies=[Depends(require_api_key)],
+)
+def list_models(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List registered models, newest first."""
+    total = db.query(ModelRecord).count()
+
+    models = (
+        db.query(ModelRecord)
+        .order_by(
+            ModelRecord.created_at.desc(),
+            ModelRecord.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "model_id": str(model.id),
+                "training_job_id": str(model.training_job_id),
+                "name": model.name,
+                "version": model.version,
+                "metrics": model.metrics,
+                "created_at": (
+                    model.created_at.isoformat()
+                    if model.created_at
+                    else None
+                ),
+            }
+            for model in models
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get(
+    "/models/{model_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_model(
+    model_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Retrieve metadata for one registered model."""
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Model not found",
+        )
+
+    job = model.training_job
+
+    return {
+        "model_id": str(model.id),
+        "training_job_id": str(model.training_job_id),
+        "name": model.name,
+        "version": model.version,
+        "metrics": model.metrics,
+        "created_at": (
+            model.created_at.isoformat()
+            if model.created_at
+            else None
+        ),
+        "training_job": {
+            "status": job.status,
+            "config_name": job.config_name,
+            "mlflow_run_id": job.mlflow_run_id,
+        },
+    }
+
 
 
 @app.get(
