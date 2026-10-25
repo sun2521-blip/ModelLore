@@ -511,6 +511,91 @@ def start_training(
     }
 
 
+
+@app.get(
+    "/models",
+    dependencies=[Depends(require_api_key)],
+)
+def list_models(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> dict:
+    """List registered models, newest first."""
+    total = db.query(ModelRecord).count()
+
+    models = (
+        db.query(ModelRecord)
+        .order_by(
+            ModelRecord.created_at.desc(),
+            ModelRecord.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "model_id": str(model.id),
+                "training_job_id": str(model.training_job_id),
+                "name": model.name,
+                "version": model.version,
+                "metrics": model.metrics,
+                "created_at": (
+                    model.created_at.isoformat()
+                    if model.created_at
+                    else None
+                ),
+            }
+            for model in models
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.get(
+    "/models/{model_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_model(
+    model_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Retrieve metadata for one registered model."""
+    model = db.get(ModelRecord, model_id)
+
+    if model is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Model not found",
+        )
+
+    job = model.training_job
+
+    return {
+        "model_id": str(model.id),
+        "training_job_id": str(model.training_job_id),
+        "name": model.name,
+        "version": model.version,
+        "metrics": model.metrics,
+        "created_at": (
+            model.created_at.isoformat()
+            if model.created_at
+            else None
+        ),
+        "training_job": {
+            "status": job.status,
+            "config_name": job.config_name,
+            "mlflow_run_id": job.mlflow_run_id,
+        },
+    }
+
+
+
 @app.get(
     "/runs/{mlflow_run_id}",
     dependencies=[Depends(require_api_key)],
