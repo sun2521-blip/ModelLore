@@ -468,7 +468,7 @@ Prerequisites: Docker Desktop with the Docker Compose plugin enabled.
 Set the API key in your shell before starting the services:
 
 PowerShell
-```bash
+```powershell
 $env:MLFLOWHUB_API_KEY="local-dev-key-change-me"
 docker compose up --build
 ```
