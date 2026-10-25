@@ -1,4 +1,3 @@
-
 # ModelLore
 
 ### Know how your models came to be.
@@ -28,15 +27,25 @@ For now, the focus is on getting the training engine and API foundations right.
 ### What it can do right now
 
 - **Configuration-driven training:** Define dataset settings, model parameters, random seeds, and train-test split settings in YAML.
+
 - **Dataset loading and validation:** Load the built-in Iris dataset or your own CSV dataset, with checks for common data problems.
+
 - **Preprocessing pipelines:** Handle numeric and categorical features using scikit-learn transformers, including imputation and one-hot encoding.
+
 - **Model training and evaluation:** Train a scikit-learn pipeline and evaluate its predictions using classification metrics.
+
 - **Reproducibility:** Use controlled random seeds and SHA-256 fingerprints for datasets and configurations.
+
 - **Experiment tracking:** Use MLflow to record training parameters, metrics, and model artifacts.
+
 - **Model lineage:** Store JSON records connecting a training run to its dataset fingerprint, configuration fingerprint, metrics, and saved model artifact.
+
 - **Inference:** Load a saved model and use it to make predictions on new input.
+
 - **FastAPI backend:** Expose endpoints for health checks, CSV uploads, training, MLflow run retrieval, and predictions.
+
 - **API-key authentication:** Protect API endpoints using an environment-configured API key.
+
 - **Automated testing:** Test important parts of the project instead of relying on the classic "it worked on my machine" philosophy.
 
 The current version focuses on tabular classification. Regression support, additional model families, and expanded deployment infrastructure are future work rather than features this release claims to provide.
@@ -48,44 +57,81 @@ The current version focuses on tabular classification. Regression support, addit
 The current architecture is intentionally small. Each component has a specific responsibility, so the project can grow without turning into one enormous Python file.
 
 ```text
-                 CONFIGURATION
-                  YAML files
-                      |
-                      v
-                 DATA LOADER
-             Iris dataset or CSV
-                      |
-                      v
-             VALIDATION AND DATA
-                PREPROCESSING
-                      |
-                      v
-              TRAIN / TEST SPLIT
-                      |
-                      v
-               MODEL TRAINING
-             scikit-learn pipeline
-                      |
-                      v
-               MODEL EVALUATION
-            Accuracy, precision, recall, F1
-                      |
-             +--------+--------+
-             |                 |
-             v                 v
-        MODEL ARTIFACT    EXPERIMENT TRACKING
-           .joblib             MLflow
-             |                 |
-             v                 v
-          INFERENCE         PARAMETERS
-       AND PREDICTIONS   METRICS AND ARTIFACTS
-             |
-             v
-         JSON LINEAGE
-    Dataset -> Config -> Run -> Model
 
-             FASTAPI SERVICE
-      Health / Upload / Train / Runs / Predict
+                 CONFIGURATION
+
+                  YAML files
+
+                      |
+
+                      v
+
+                 DATA LOADER
+
+             Iris dataset or CSV
+
+                      |
+
+                      v
+
+             VALIDATION AND DATA
+
+                PREPROCESSING
+
+                      |
+
+                      v
+
+              TRAIN / TEST SPLIT
+
+                      |
+
+                      v
+
+               MODEL TRAINING
+
+             scikit-learn pipeline
+
+                      |
+
+                      v
+
+               MODEL EVALUATION
+
+            Accuracy, precision, recall, F1
+
+                      |
+
+             +--------+--------+
+
+             |                 |
+
+             v                 v
+
+        MODEL ARTIFACT    EXPERIMENT TRACKING
+
+           .joblib             MLflow
+
+             |                 |
+
+             v                 v
+
+          INFERENCE         PARAMETERS
+
+       AND PREDICTIONS   METRICS AND ARTIFACTS
+
+             |
+
+             v
+
+         JSON LINEAGE
+
+    Dataset -> Config -> Run -> Model
+
+             FASTAPI SERVICE
+
+      Health / Upload / Train / Runs / Predict
+
 ```
 
 The JSON lineage records and MLflow tracking serve different purposes. Lineage gives each training run a traceable record, while MLflow makes experiments easier to inspect and compare.
@@ -97,17 +143,29 @@ The bigger plan is to connect these pieces to a proper backend and eventually gi
 ## The technology aboard this ship
 
 | Technology | Purpose |
+
 |---|---|
+
 | Python | Core implementation |
+
 | pandas and NumPy | Data handling |
+
 | scikit-learn | Preprocessing, training, evaluation and inference |
+
 | PyYAML | Configuration loading |
+
 | joblib | Saving and loading trained models |
+
 | MLflow | Experiment tracking and model artifact logging |
+
 | FastAPI | API backend |
+
 | Pydantic | Request validation |
+
 | pytest | Automated testing |
+
 | uv | Python environment and dependency management |
+
 | Git and GitHub Actions | Version control and CI |
 
 ---
@@ -117,14 +175,19 @@ The bigger plan is to connect these pieces to a proper backend and eventually gi
 ### Requirements
 
 - Python 3.13
+
 - [uv](https://docs.astral.sh/uv/)
+
 - Git
 
 ### 1. Clone the repository
 
 ```bash
+
 git clone https://github.com/sun2521-blip/ModelLore.git
+
 cd ModelLore
+
 ```
 
 ### 2. Set up the environment
@@ -134,9 +197,13 @@ This project has been developed with Python 3.13.
 If you have `uv` installed, create an environment and install the project dependencies:
 
 ```bash
+
 uv venv .venv --python 3.13
+
 source .venv/Scripts/activate
+
 uv pip install -r requirements.txt
+
 ```
 
 On Windows, the activation command above is intended for Git Bash. Other terminals use different activation commands.
@@ -146,7 +213,9 @@ If you already have an existing project environment, you do not need to recreate
 ### 3. Run the tests
 
 ```bash
+
 python -m pytest tests -v
+
 ```
 
 The tests cover configuration validation, dataset loading, preprocessing, reproducibility, lineage, experiment tracking, inference, and API behavior.
@@ -156,7 +225,9 @@ The tests cover configuration validation, dataset loading, preprocessing, reprod
 The default configuration uses the Iris dataset.
 
 ```bash
+
 python -m ml.training.train
+
 ```
 
 The training pipeline loads the configuration, prepares the data, trains and evaluates the model, saves a unique model artifact, and creates a JSON lineage record. It also logs the training run to MLflow.
@@ -174,13 +245,17 @@ ModelLore can verify a completed training run by loading its lineage record, rer
 First, train a model:
 
 ```bash
+
 python -m ml.training.train
+
 ```
 
 The command prints the path to the generated lineage record. Pass that path to the verification command:
 
 ```bash
+
 python -m ml.verification lineage/YOUR_RUN_ID.json
+
 ```
 
 Replace `YOUR_RUN_ID.json` with the actual filename generated during training.
@@ -188,20 +263,35 @@ Replace `YOUR_RUN_ID.json` with the actual filename generated during training.
 ### Example output
 
 ```json
+
 {
-  "original_run_id": "original-run-id",
-  "verification_run_id": "verification-run-id",
-  "dataset_matches": true,
-  "config_matches": true,
-  "metrics_match": true,
-  "metric_comparison": {
-    "accuracy": true,
-    "precision": true,
-    "recall": true,
-    "f1": true
-  },
-  "verified": true
+
+  "original_run_id": "original-run-id",
+
+  "verification_run_id": "verification-run-id",
+
+  "dataset_matches": true,
+
+  "config_matches": true,
+
+  "metrics_match": true,
+
+  "metric_comparison": {
+
+    "accuracy": true,
+
+    "precision": true,
+
+    "recall": true,
+
+    "f1": true
+
+  },
+
+  "verified": true
+
 }
+
 ```
 
 The IDs and values above are illustrative.
@@ -209,8 +299,11 @@ The IDs and values above are illustrative.
 ### What is checked?
 
 - **Dataset fingerprint:** Checks whether the dataset used for the rerun matches the original dataset.
+
 - **Configuration fingerprint:** Checks whether the saved configuration matches the original configuration.
+
 - **Metrics:** Compares the rerun's recorded metrics with the original metrics within the configured numerical tolerance.
+
 - **Overall result:** `verified` is `true` only when the dataset, configuration, and compared metrics all match.
 
 ### Limitations
@@ -226,7 +319,9 @@ Matching metrics do not guarantee byte-for-byte identical model artifacts. Diffe
 Start the MLflow UI in a second terminal from the project directory:
 
 ```bash
+
 mlflow ui
+
 ```
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
@@ -244,27 +339,41 @@ You don't have to stay in the Iris universe forever.
 ModelLore also supports CSV datasets through YAML configuration. For example, a dataset configuration can look like this:
 
 ```yaml
+
 dataset:
-  name: csv
-  path: data/sample.csv
-  target_column: target
+
+  name: csv
+
+  path: data/sample.csv
+
+  target_column: target
 
 training:
-  random_seed: 42
-  test_size: 0.2
+
+  random_seed: 42
+
+  test_size: 0.2
 
 model:
-  model_type: random_forest
-  task_type: classification
-  parameters:
-    n_estimators: 50
-    max_depth: 5
+
+  model_type: random_forest
+
+  task_type: classification
+
+  parameters:
+
+    n_estimators: 50
+
+    max_depth: 5
+
 ```
 
 Save the configuration as `configs/my_dataset.yaml`, then run:
 
 ```bash
+
 python -m ml.training.train configs/my_dataset.yaml
+
 ```
 
 Replace the dataset path and target column with the values appropriate for your data. The current training pipeline is designed for classification datasets, and the target must contain enough examples of each class for a stratified train-test split.
@@ -284,7 +393,9 @@ The API reads its secret from the `MLFLOWHUB_API_KEY` environment variable.
 For Windows using Git Bash:
 
 ```bash
+
 export MLFLOWHUB_API_KEY="replace-with-a-long-random-secret"
+
 ```
 
 Use a strong, randomly generated secret in real environments. Never commit real API keys to Git.
@@ -296,7 +407,9 @@ If the environment variable is not configured, protected endpoints fail closed r
 From the project root, with the project environment activated:
 
 ```bash
+
 uvicorn api.main:app --reload
+
 ```
 
 The local service runs at [http://127.0.0.1:8000](http://127.0.0.1:8000).
@@ -306,7 +419,9 @@ The local service runs at [http://127.0.0.1:8000](http://127.0.0.1:8000).
 The health endpoint is public and does not require an API key:
 
 ```bash
+
 curl http://127.0.0.1:8000/health
+
 ```
 
 ### 4. Upload a CSV dataset
@@ -314,9 +429,13 @@ curl http://127.0.0.1:8000/health
 Protected endpoints require the `X-API-Key` header:
 
 ```bash
+
 curl -X POST "http://127.0.0.1:8000/datasets/upload" \
-  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
-  -F "file=@data/sample.csv"
+
+  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
+
+  -F "file=data/sample.csv"
+
 ```
 
 The response includes a dataset ID. Save it for the training request.
@@ -324,7 +443,9 @@ The response includes a dataset ID. Save it for the training request.
 Current upload restrictions:
 
 - CSV files only.
+
 - Maximum file size of 10 MiB.
+
 - Invalid UTF-8, empty files, and invalid or duplicate headers are rejected.
 
 ### 5. Train on the uploaded dataset
@@ -332,23 +453,37 @@ Current upload restrictions:
 Replace `DATASET_UUID` with the ID returned by the upload endpoint. Set `target_column` to the actual target header in your CSV.
 
 ```bash
+
 curl -X POST "http://127.0.0.1:8000/train" \
-  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "config_name": "csv-test",
-    "dataset_id": "DATASET_UUID",
-    "target_column": "target"
-  }'
+
+  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
+
+  -H "Content-Type: application/json" \
+
+  -d '{
+
+    "config_name": "csv-test",
+
+    "dataset_id": "DATASET_UUID",
+
+    "target_column": "target"
+
+  }'
+
 ```
 
 For the built-in Iris dataset, training can be requested without uploading a CSV:
 
 ```bash
+
 curl -X POST "http://127.0.0.1:8000/train" \
-  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"config_name": "iris"}'
+
+  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
+
+  -H "Content-Type: application/json" \
+
+  -d '{"config_name": "iris"}'
+
 ```
 
 The training response includes identifiers and information about the generated run and artifacts.
@@ -358,8 +493,11 @@ The training response includes identifiers and information about the generated r
 Replace `MLFLOW_RUN_ID` with the MLflow run ID returned by the training response:
 
 ```bash
+
 curl "http://127.0.0.1:8000/runs/MLFLOW_RUN_ID" \
-  -H "X-API-Key: $MLFLOWHUB_API_KEY"
+
+  -H "X-API-Key: $MLFLOWHUB_API_KEY"
+
 ```
 
 ### 7. Make predictions
@@ -369,20 +507,35 @@ Send the lineage run ID and a list of feature rows. Feature names must match tho
 The following example uses the Iris feature names:
 
 ```bash
+
 curl -X POST "http://127.0.0.1:8000/predict" \
-  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "lineage_run_id": "LINEAGE_RUN_ID",
-    "features": [
-      {
-        "sepal length (cm)": 5.1,
-        "sepal width (cm)": 3.5,
-        "petal length (cm)": 1.4,
-        "petal width (cm)": 0.2
-      }
-    ]
-  }'
+
+  -H "X-API-Key: $MLFLOWHUB_API_KEY" \
+
+  -H "Content-Type: application/json" \
+
+  -d '{
+
+    "lineage_run_id": "LINEAGE_RUN_ID",
+
+    "features": [
+
+      {
+
+        "sepal length (cm)": 5.1,
+
+        "sepal width (cm)": 3.5,
+
+        "petal length (cm)": 1.4,
+
+        "petal width (cm)": 0.2
+
+      }
+
+    ]
+
+  }'
+
 ```
 
 Replace the lineage ID and feature names/values with those for your trained model.
@@ -392,13 +545,186 @@ For the exact request schemas and response shapes, visit [http://127.0.0.1:8000/
 ### API behavior and current limits
 
 - `GET /health` is public; protected endpoints require `X-API-Key`.
+
 - If `MLFLOWHUB_API_KEY` is unset, protected requests fail closed.
+
 - CSV uploads accept `.csv` files up to 10 MiB and validate encoding and headers.
+
 - `target_column` is optional. When omitted for uploaded CSV training, the configured target column is used.
+
 - Uploaded datasets are referenced by IDs rather than arbitrary client-supplied filesystem paths.
+
 - This is an early-stage local development API, not a hardened public production service. Do not expose it directly to the public internet without additional security, rate limiting, and operational controls.
 
 ---
+
+## Dataset, Job, and Model Management API
+
+ModelLore provides read-only management endpoints for inspecting uploaded datasets, training jobs, and registered models.
+
+All management endpoints require API-key authentication using the `X-API-Key` header.
+
+### Authentication
+
+Set the API key in your environment:
+
+```bash
+
+# Git Bash
+
+export MLFLOWHUB_API_KEY="your-api-key"
+
+```
+
+For PowerShell:
+
+```powershell
+
+Env: Mlflowhub API Key = "your-api-key"
+
+```
+
+Include the key with each request:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/datasets"
+
+```
+
+### Pagination
+
+List endpoints support pagination through query parameters:
+
+| Parameter | Default | Allowed values |
+
+|---|---:|---|
+
+| `limit` | 20 | 1–100 |
+
+| `offset` | 0 | 0 or greater |
+
+For example, retrieve up to 10 datasets, starting from the 20th result:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/datasets?limit=10&offset=20"
+
+```
+
+Paginated responses include `items`, `total`, `limit`, and `offset`.
+
+### Dataset Endpoints
+
+| Method | Endpoint | Description |
+
+|---|---|---|
+
+| GET | `/datasets` | List uploaded datasets |
+
+| GET | `/datasets/{dataset_id}` | Retrieve details for a specific dataset |
+
+List datasets:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/datasets?limit=20&offset=0"
+
+```
+
+Each dataset entry includes its identifier, name, original filename, SHA-256 hash, row count, column count, target column, and creation timestamp.
+
+Retrieve a specific dataset:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/datasets/YOUR_DATASET_ID"
+
+```
+
+### Training Job Endpoints
+
+| Method | Endpoint | Description |
+
+|---|---|---|
+
+| GET | `/jobs` | List training jobs |
+
+| GET | `/jobs/{job_id}` | Retrieve details for a specific training job |
+
+List training jobs:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/jobs?limit=20&offset=0"
+
+```
+
+Job records expose available metadata such as job status, metrics, errors, and timestamps.
+
+Retrieve a specific job:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/jobs/YOUR_JOB_ID"
+
+```
+
+### Model Registry Endpoints
+
+| Method | Endpoint | Description |
+
+|---|---|---|
+
+| GET | `/models` | List registered models |
+
+| GET | `/models/{model_id}` | Retrieve details for a specific model |
+
+List registered models:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/models?limit=20&offset=0"
+
+```
+
+Retrieve a specific model:
+
+```bash
+
+curl -H "X-API-Key: your-api-key" \
+
+  "http://localhost:8000/models/YOUR_MODEL_ID"
+
+```
+
+Model records include available model metadata and related training-job information. Artifact filesystem paths are not exposed by these management responses.
+
+### Error Responses
+
+- `401 Unauthorized`: API-key authentication failed.
+
+- `404 Not Found`: The requested dataset, job, or model does not exist.
+
+- `422 Unprocessable Entity`: Request parameters failed validation.
+
+- `503 Service Unavailable`: The API key is not configured on the server.
+
+These endpoints provide visibility into existing resources; they do not replace the dataset upload, training, or prediction endpoints.
 
 ## The lineage experiment
 
@@ -409,8 +735,11 @@ ModelLore creates SHA-256 fingerprints for the loaded dataset and configuration.
 That gives us a starting point for answering questions like:
 
 - Did two experiments use the same dataset and configuration?
+
 - Which parameters were used to train a particular model?
+
 - Which metrics belonged to a specific run?
+
 - Where is the model artifact associated with that run?
 
 These fingerprints are identifiers, not proof that a model is correct or secure. Their purpose is to make experiment history easier to trace.
@@ -424,15 +753,24 @@ Eventually, I want this lineage to extend across model versions, deployments, an
 The long-term plan is to evolve ModelLore from a training engine into a small end-to-end ML platform.
 
 | Version | Mission |
+
 |---|---|
+
 | `v0.1.0` | Training engine, evaluation, reproducibility, lineage, and MLflow tracking |
+
 | `v0.2.0` | FastAPI backend, API-key protection, CSV uploads, training, run lookup, and prediction endpoints |
-| `v0.3.0` | PostgreSQL and Docker Compose |
-| `v0.4.0` | Asynchronous training with Redis and Celery |
-| `v0.5.0` | Model registry and expanded model serving |
-| `v0.6.0` | CI/CD and AWS deployment |
-| `v0.7.0` | Model monitoring |
-| `v0.8.0` | UI polish, documentation, and portfolio-ready demos |
+
+| `v0.3.0` | PostgreSQL persistence, database migrations, and Docker Compose deployment |
+
+| `v0.4.0` | Dataset, training job, and model management APIs with pagination and resource metadata |
+
+| `v0.5.0` | Asynchronous training, background job execution, and expanded model lifecycle management |
+
+| `v0.6.0` | CI/CD improvements and cloud deployment |
+
+| `v0.7.0` | Model monitoring and operational observability |
+
+| `v0.8.0` | Frontend dashboard, UI polish, and portfolio-ready demos |
 
 These are planned milestones, not promises that every feature already exists. The first releases focus on making the training engine reliable before building the infrastructure around it.
 
@@ -456,7 +794,6 @@ It's one checkpoint in a much longer journey.
 
 The rest of the universe can wait until the foundations work.
 
-
 ## Database and Docker Setup
 
 ModelLore uses PostgreSQL for persistent metadata and Docker Compose for local deployment.
@@ -468,14 +805,23 @@ Prerequisites: Docker Desktop with the Docker Compose plugin enabled.
 Set the API key in your shell before starting the services:
 
 PowerShell
+
 ```powershell
-$env:MLFLOWHUB_API_KEY="local-dev-key-change-me"
+
+Env: Mlflowhub API Key="local-dev-key-change-me"
+
 docker compose up --build
+
 ```
+
 Git Bash
+
 ```bash
+
 export MLFLOWHUB_API_KEY="your-local-api-key"
+
 docker compose up -d --build
+
 ```
 
 The API container runs Alembic migrations before starting Uvicorn. PostgreSQL must become healthy before the API starts.
@@ -483,9 +829,13 @@ The API container runs Alembic migrations before starting Uvicorn. PostgreSQL mu
 Check service status and database connectivity:
 
 ```bash
+
 docker compose ps
+
 curl http://localhost:8000/health
+
 curl http://localhost:8000/health/database
+
 ```
 
 Protected API endpoints require the `X-API-Key` request header.
@@ -495,7 +845,9 @@ Protected API endpoints require the `X-API-Key` request header.
 Set `DATABASE_URL` to your PostgreSQL connection URL when running the application outside Docker. Apply migrations before starting the API:
 
 ```bash
+
 python -m alembic upgrade head
+
 ```
 
 The default application configuration uses SQLite when `DATABASE_URL` is not set.
