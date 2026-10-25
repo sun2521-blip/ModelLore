@@ -111,12 +111,17 @@ def test_get_dataset_returns_404_for_unknown_id(api_client):
     assert response.status_code == 404
 
 
-def test_dataset_management_requires_api_key():
-    from fastapi.testclient import TestClient
 
+def test_dataset_management_requires_api_key(monkeypatch):
+    import os
+
+    from fastapi.testclient import TestClient
     from api.main import app
+
+    monkeypatch.setenv("MLFLOWHUB_API_KEY", "test-api-key")
 
     with TestClient(app) as client:
         response = client.get("/datasets")
 
     assert response.status_code == 401
+

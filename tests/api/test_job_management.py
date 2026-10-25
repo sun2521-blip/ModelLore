@@ -78,10 +78,12 @@ def test_get_job_returns_404_for_unknown_id(api_client):
     assert response.status_code == 404
 
 
-def test_job_management_requires_api_key():
+def test_job_management_requires_api_key(monkeypatch):
     from fastapi.testclient import TestClient
-
+    import os
     from api.main import app
+
+    monkeypatch.setenv("MLFLOWHUB_API_KEY", "test-api-key")
 
     with TestClient(app) as client:
         response = client.get("/jobs")
