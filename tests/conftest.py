@@ -8,33 +8,41 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from api.main import app
-from db import models  # Register all database models
+from db import models  # noqa: F401
 from db.base import Base
 from db.session import get_db
 
 
 @pytest.fixture
-def api_client(monkeypatch):
-    """Create an API test client with an isolated SQLite database."""
-    monkeypatch.setenv("MLFLOWHUB_API_KEY", "test-api-key")
-
+def db_session_factory():
+    """Provide sessions for an isolated in-memory test database."""
     test_engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-
-    TestingSessionLocal = sessionmaker(
+    testing_session_local = sessionmaker(
         bind=test_engine,
         autoflush=False,
         autocommit=False,
         expire_on_commit=False,
     )
-
     Base.metadata.create_all(bind=test_engine)
 
+    try:
+        yield testing_session_local
+    finally:
+        Base.metadata.drop_all(bind=test_engine)
+        test_engine.dispose()
+
+
+@pytest.fixture
+def api_client(monkeypatch, db_session_factory):
+    """Create an API client using the isolated test database."""
+    monkeypatch.setenv("MLFLOWHUB_API_KEY", "test-api-key")
+
     def override_get_db():
-        db = TestingSessionLocal()
+        db = db_session_factory()
         try:
             yield db
         finally:
@@ -48,5 +56,3 @@ def api_client(monkeypatch):
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
-        Base.metadata.drop_all(bind=test_engine)
-        test_engine.dispose()

@@ -455,3 +455,45 @@ It's one checkpoint in a much longer journey.
 **The mission is simple: train it, track it, trace it, and know how it came to be.**
 
 The rest of the universe can wait until the foundations work.
+
+
+## Database and Docker Setup
+
+ModelLore uses PostgreSQL for persistent metadata and Docker Compose for local deployment.
+
+### Run with Docker Compose
+
+Prerequisites: Docker Desktop with the Docker Compose plugin enabled.
+
+Set the API key in your shell before starting the services:
+
+```bash
+export MLFLOWHUB_API_KEY="your-local-api-key"
+docker compose up -d --build
+```
+
+The API container runs Alembic migrations before starting Uvicorn. PostgreSQL must become healthy before the API starts.
+
+Check service status and database connectivity:
+
+```bash
+docker compose ps
+curl http://localhost:8000/health
+curl http://localhost:8000/health/database
+```
+
+Protected API endpoints require the `X-API-Key` request header.
+
+### Local database configuration
+
+Set `DATABASE_URL` to your PostgreSQL connection URL when running the application outside Docker. Apply migrations before starting the API:
+
+```bash
+python -m alembic upgrade head
+```
+
+The default application configuration uses SQLite when `DATABASE_URL` is not set.
+
+### Persistent storage
+
+Docker Compose persists PostgreSQL data in a named volume and mounts dataset uploads, model artifacts, lineage metadata, and MLflow runs from the project directory. Avoid `docker compose down -v` when you want to preserve the database volume.

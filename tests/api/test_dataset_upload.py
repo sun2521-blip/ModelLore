@@ -6,13 +6,15 @@ from unittest.mock import patch
 import pytest
 
 from api import main
+from db.models import Dataset
+from sqlalchemy import select
 
 
 VALID_CSV = b"feature_a,feature_b,target\n1,2,0\n3,4,1\n"
 
 
 def test_upload_valid_csv_returns_dataset_id(
-    api_client, tmp_path, monkeypatch
+    api_client, tmp_path, monkeypatch, db_session_factory
 ):
     upload_dir = tmp_path / "uploads"
     monkeypatch.setattr(main, "UPLOAD_DIR", upload_dir)
@@ -30,6 +32,14 @@ def test_upload_valid_csv_returns_dataset_id(
     assert body["size_bytes"] == len(VALID_CSV)
     assert (upload_dir / f"{dataset_id}.csv").read_bytes() == VALID_CSV
 
+    with db_session_factory() as session:
+        saved_dataset = session.scalar(
+            select(Dataset).where(Dataset.id == dataset_id)
+        )
+        assert saved_dataset is not None
+        assert saved_dataset.original_filename == "dataset.csv"
+        assert saved_dataset.sha256 == body["sha256"]
+        assert saved_dataset.column_count == 3
 
 def test_upload_rejects_non_csv_file(api_client):
     response = api_client.post(
