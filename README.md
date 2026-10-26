@@ -326,7 +326,7 @@ mlflow ui
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-Find the `mlflowhub-training` experiment to inspect your runs, parameters, metrics, and artifacts.
+Find the `modellore-training` experiment to inspect your runs, parameters, metrics, and artifacts.
 
 Keep the terminal running while using the UI. The default local tracking database and generated artifacts are development data and should not be committed to Git.
 
@@ -434,7 +434,7 @@ curl -X POST "http://127.0.0.1:8000/datasets/upload" \
 
   -H "X-API-Key: $MLFLOWHUB_API_KEY" \
 
-  -F "file=data/sample.csv"
+  -F "file=@data/sample.csv"
 
 ```
 
@@ -580,7 +580,7 @@ For PowerShell:
 
 ```powershell
 
-Env: Mlflowhub API Key = "your-api-key"
+$env:MLFLOWHUB_API_KEY = "your-api-key"
 
 ```
 
@@ -808,7 +808,7 @@ PowerShell
 
 ```powershell
 
-Env: Mlflowhub API Key="local-dev-key-change-me"
+$env:MLFLOWHUB_API_KEY = "local-dev-key-change-me"
 
 docker compose up --build
 

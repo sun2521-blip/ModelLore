@@ -62,7 +62,7 @@ def require_api_key(
 
 
 class TrainingRequest(BaseModel):
-    config_name: Literal["iris", "csv-test"] = "iris"
+    config_name: Literal["iris", "csv-test"] | None = None
     dataset_id: UUID | None = None
     target_column: str | None = Field(default=None, min_length=1)
 
@@ -359,6 +359,9 @@ def start_training(
 ) -> dict:
     dataset_path = None
     dataset_record = None
+    config_name = (
+        "csv-test" if request.dataset_id else (request.config_name or "iris")
+    )
 
     if request.dataset_id:
         dataset_path = (
@@ -403,8 +406,17 @@ def start_training(
                 )
 
             dataset_config["path"] = str(dataset_path)
-            if request.target_column is not None:
-                dataset_config["target_column"] = request.target_column
+
+            target_column = request.target_column or dataset_config.get("target_column")
+            if not isinstance(target_column, str) or not target_column.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="A target column must be specified",
+                )
+
+            dataset_config["target_column"] = target_column
+            if dataset_record is not None:
+                dataset_record.target_column = target_column
 
             generated_config = UPLOAD_DIR / f"{request.dataset_id}.yaml"
             generated_config.write_text(
@@ -419,7 +431,8 @@ def start_training(
                 detail="Unable to prepare dataset training configuration",
             ) from exc
     else:
-        config_path = CONFIG_DIR / f"{request.config_name}.yaml"
+
+        config_path = CONFIG_DIR / f"{config_name}.yaml"
 
     if not config_path.is_file():
         raise HTTPException(
@@ -429,7 +442,7 @@ def start_training(
 
     job = TrainingJob(
         dataset_id=dataset_record.id if dataset_record else None,
-        config_name=request.config_name,
+        config_name=config_name,
         status="RUNNING",
         started_at=datetime.now(timezone.utc),
     )
@@ -492,7 +505,7 @@ def start_training(
         db.add(
             ModelRecord(
                 training_job_id=job.id,
-                name=request.config_name,
+                name=job.config_name,
                 artifact_path=str(artifact_path),
                 metrics=result.get("metrics"),
             )

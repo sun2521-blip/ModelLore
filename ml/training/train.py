@@ -101,7 +101,7 @@ def train_model(
 
     # Track the complete training run in MLflow
     with start_run(
-        experiment_name="mlflowhub-training",
+        experiment_name="modellore-training",
         run_name=f"{model_config.model_type}-{dataset_name}",
     ) as mlflow_run:
         mlflow.set_tag("dataset_hash", dataset_hash)

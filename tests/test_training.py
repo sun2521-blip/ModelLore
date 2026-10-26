@@ -156,7 +156,7 @@ def test_training_failure_records_lineage(tmp_path, monkeypatch):
     client = mlflow.tracking.MlflowClient()
     runs = client.search_runs(
         experiment_ids=[
-            client.get_experiment_by_name("mlflowhub-training").experiment_id
+            client.get_experiment_by_name("modellore-training").experiment_id
         ]
     )
     assert runs
