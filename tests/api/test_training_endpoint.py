@@ -1,10 +1,13 @@
-
+import json
+from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
 import mlflow
 from sqlalchemy import select
 from db.models import TrainingJob
 
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 def test_train_iris_returns_training_results(api_client):
     with patch(
@@ -111,3 +114,64 @@ def test_get_run_returns_500_on_tracking_error(api_client):
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Unable to retrieve MLflow run"
+
+
+
+def test_train_marks_job_failed_when_model_persistence_fails(
+    api_client,
+    db_session_factory,
+    tmp_path,
+):
+    lineage_run_id = str(uuid4())
+    lineage_path = tmp_path / "lineage.json"
+    lineage_path.write_text(
+        json.dumps({"artifact_path": "artifacts/model.joblib"}),
+        encoding="utf-8",
+    )
+
+    training_result = {
+        "run_id": lineage_run_id,
+        "mlflow_run_id": "test-mlflow-id",
+        "metrics": {"accuracy": 0.9},
+        "parameters": {},
+        "lineage_path": str(lineage_path),
+        "feature_columns": ["feature"],
+    }
+
+    original_commit = Session.commit
+    commit_count = 0
+
+    def fail_final_commit(session):
+        nonlocal commit_count
+        commit_count += 1
+
+        if commit_count == 2:
+            raise SQLAlchemyError("Simulated persistence failure")
+
+        return original_commit(session)
+
+    with (
+        patch("api.main.train_model", return_value=training_result),
+        patch.object(Session, "commit", new=fail_final_commit),
+    ):
+        response = api_client.post(
+            "/train",
+            json={"config_name": "iris"},
+        )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        "Training completed but its database record could not be saved"
+    )
+
+    with db_session_factory() as session:
+        failed_job = session.scalar(
+            select(TrainingJob).where(
+                TrainingJob.error_message
+                == "Training completed but its database record could not be saved"
+            )
+        )
+
+        assert failed_job is not None
+        assert failed_job.status == "FAILED"
+        assert failed_job.completed_at is not None

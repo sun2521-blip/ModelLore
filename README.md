@@ -172,69 +172,93 @@ The bigger plan is to connect these pieces to a proper backend and eventually gi
 
 ## Getting started
 
-### Requirements
+### Prerequisites
 
-- Python 3.13
-
-- [uv](https://docs.astral.sh/uv/)
-
-- Git
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Docker Desktop (for the containerized setup)
 
 ### 1. Clone the repository
 
 ```bash
-
 git clone https://github.com/sun2521-blip/ModelLore.git
-
 cd ModelLore
-
 ```
 
-### 2. Set up the environment
+### 2. Install dependencies
 
-This project has been developed with Python 3.13.
-
-If you have `uv` installed, create an environment and install the project dependencies:
+Install the project dependencies using the committed lockfile:
 
 ```bash
-
-uv venv .venv --python 3.13
-
-source .venv/Scripts/activate
-
-uv pip install -r requirements.txt
-
+uv sync
 ```
 
-On Windows, the activation command above is intended for Git Bash. Other terminals use different activation commands.
+This creates the project's virtual environment and installs the locked dependencies.
 
-If you already have an existing project environment, you do not need to recreate it just to follow these instructions.
+### 3. Configure environment variables
 
-### 3. Run the tests
+Set your API key before starting the API.
+
+**PowerShell:**
+
+```powershell
+$env:MLFLOWHUB_API_KEY = "your-api-key"
+```
+
+**Git Bash:**
 
 ```bash
-
-python -m pytest tests -v
-
+export MLFLOWHUB_API_KEY="your-api-key"
 ```
 
-The tests cover configuration validation, dataset loading, preprocessing, reproducibility, lineage, experiment tracking, inference, and API behavior.
+Use a strong, private API key. Never commit secrets or your `.env` file.
 
-### 4. Train your first model
+### 4. Run the API
+
+```bash
+uv run uvicorn api.main:app --reload
+```
+
+Open the interactive API documentation at:
+
+http://127.0.0.1:8000/docs
+
+### 5. Run tests
+
+```bash
+uv run pytest
+```
+
+
+### Dependency management
+
+- `pyproject.toml` defines the project and its dependencies.
+- `uv.lock` records the resolved dependency versions.
+- `requirements.txt` is retained as a pinned requirements-file alternative.
+
+After changing dependencies, regenerate the lockfile with:
+
+```bash
+uv lock
+```
+
+To check whether the lockfile is up to date:
+
+```bash
+uv lock --check
+```
+
+### 6. Train your first model
 
 The default configuration uses the Iris dataset.
 
 ```bash
-
-python -m ml.training.train
-
+uv run python -m ml.training.train
 ```
 
 The training pipeline loads the configuration, prepares the data, trains and evaluates the model, saves a unique model artifact, and creates a JSON lineage record. It also logs the training run to MLflow.
 
 The terminal prints the evaluation metrics, saved model path, lineage record path, and MLflow run ID.
-
----
 
 ## Verify a training run
 
@@ -326,7 +350,7 @@ mlflow ui
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-Find the `mlflowhub-training` experiment to inspect your runs, parameters, metrics, and artifacts.
+Find the `modellore-training` experiment to inspect your runs, parameters, metrics, and artifacts.
 
 Keep the terminal running while using the UI. The default local tracking database and generated artifacts are development data and should not be committed to Git.
 
@@ -434,7 +458,7 @@ curl -X POST "http://127.0.0.1:8000/datasets/upload" \
 
   -H "X-API-Key: $MLFLOWHUB_API_KEY" \
 
-  -F "file=data/sample.csv"
+  -F "file=@data/sample.csv"
 
 ```
 
@@ -580,7 +604,7 @@ For PowerShell:
 
 ```powershell
 
-Env: Mlflowhub API Key = "your-api-key"
+$env:MLFLOWHUB_API_KEY = "your-api-key"
 
 ```
 
@@ -808,7 +832,7 @@ PowerShell
 
 ```powershell
 
-Env: Mlflowhub API Key="local-dev-key-change-me"
+$env:MLFLOWHUB_API_KEY = "local-dev-key-change-me"
 
 docker compose up --build
 

@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -28,7 +29,7 @@ from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
 from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
-import io
+
 
 app = FastAPI(title="ModelLore API", version="0.2.0")
 
@@ -62,7 +63,7 @@ def require_api_key(
 
 
 class TrainingRequest(BaseModel):
-    config_name: Literal["iris", "csv-test"] = "iris"
+    config_name: Literal["iris", "csv-test"] | None = None
     dataset_id: UUID | None = None
     target_column: str | None = Field(default=None, min_length=1)
 
@@ -120,7 +121,7 @@ async def upload_dataset(
             detail="Uploaded CSV is empty",
         )
 
-    
+
     try:
         decoded = content.decode("utf-8-sig")
         reader = csv.reader(io.StringIO(decoded, newline=""), strict=True)
@@ -359,6 +360,9 @@ def start_training(
 ) -> dict:
     dataset_path = None
     dataset_record = None
+    config_name = (
+        "csv-test" if request.dataset_id else (request.config_name or "iris")
+    )
 
     if request.dataset_id:
         dataset_path = (
@@ -403,8 +407,17 @@ def start_training(
                 )
 
             dataset_config["path"] = str(dataset_path)
-            if request.target_column is not None:
-                dataset_config["target_column"] = request.target_column
+
+            target_column = request.target_column or dataset_config.get("target_column")
+            if not isinstance(target_column, str) or not target_column.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="A target column must be specified",
+                )
+
+            dataset_config["target_column"] = target_column
+            if dataset_record is not None:
+                dataset_record.target_column = target_column
 
             generated_config = UPLOAD_DIR / f"{request.dataset_id}.yaml"
             generated_config.write_text(
@@ -419,7 +432,8 @@ def start_training(
                 detail="Unable to prepare dataset training configuration",
             ) from exc
     else:
-        config_path = CONFIG_DIR / f"{request.config_name}.yaml"
+
+        config_path = CONFIG_DIR / f"{config_name}.yaml"
 
     if not config_path.is_file():
         raise HTTPException(
@@ -429,7 +443,7 @@ def start_training(
 
     job = TrainingJob(
         dataset_id=dataset_record.id if dataset_record else None,
-        config_name=request.config_name,
+        config_name=config_name,
         status="RUNNING",
         started_at=datetime.now(timezone.utc),
     )
@@ -438,6 +452,7 @@ def start_training(
         db.add(job)
         db.commit()
         db.refresh(job)
+        job_id = job.id
     except Exception as exc:
         db.rollback()
         raise HTTPException(
@@ -461,11 +476,18 @@ def start_training(
             status_code=400,
             detail=str(exc),
         ) from exc
+
     except Exception as exc:
         job.status = "FAILED"
         job.error_message = str(exc)
         job.completed_at = datetime.now(timezone.utc)
         db.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Training failed unexpectedly",
+        ) from exc
+
 
         raise HTTPException(
             status_code=500,
@@ -492,20 +514,38 @@ def start_training(
         db.add(
             ModelRecord(
                 training_job_id=job.id,
-                name=request.config_name,
+                lineage_run_id=UUID(str(lineage_run_id)),
+                feature_columns=result.get("feature_columns"),
+                name=job.config_name,
                 artifact_path=str(artifact_path),
                 metrics=result.get("metrics"),
             )
         )
 
+
     try:
         db.commit()
     except Exception as exc:
         db.rollback()
+        failure_message = (
+            "Training completed but its database record could not be saved"
+        )
+
+        try:
+            failed_job = db.get(TrainingJob, job_id)
+            if failed_job is not None:
+                failed_job.status = "FAILED"
+                failed_job.error_message = failure_message
+                failed_job.completed_at = datetime.now(timezone.utc)
+                db.commit()
+        except Exception:
+            db.rollback()
+
         raise HTTPException(
             status_code=500,
-            detail="Training completed but its database record could not be saved",
+            detail=failure_message,
         ) from exc
+
 
     return {
         "status": "completed",
@@ -638,34 +678,34 @@ def get_run(mlflow_run_id: str) -> dict:
 
 
 @app.post("/predict", dependencies=[Depends(require_api_key)])
-def make_prediction(request: PredictionRequest) -> dict:
-    lineage_path = LINEAGE_DIR / f"{request.lineage_run_id}.json"
+def make_prediction(
+    request: PredictionRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    model_record = (
+        db.query(ModelRecord)
+        .filter(ModelRecord.lineage_run_id == request.lineage_run_id)
+        .first()
+    )
 
-    try:
-        with lineage_path.open("r", encoding="utf-8") as file:
-            lineage = json.load(file)
-    except FileNotFoundError as exc:
+    if model_record is None:
         raise HTTPException(
             status_code=404,
-            detail="Lineage run not found",
-        ) from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to read training lineage",
-        ) from exc
+            detail="Registered model not found for this lineage run",
+        )
 
-    if lineage.get("status") != "FINISHED":
+    job = model_record.training_job
+    if job.status != "FINISHED":
         raise HTTPException(
             status_code=409,
             detail="Cannot predict with an unsuccessful training run",
         )
 
-    feature_columns = lineage.get("feature_columns")
+    feature_columns = model_record.feature_columns
     if not feature_columns:
         raise HTTPException(
             status_code=409,
-            detail="This run has no saved feature-column metadata",
+            detail="This model has no saved feature-column metadata; retrain it",
         )
 
     expected_columns = set(feature_columns)
@@ -682,14 +722,7 @@ def make_prediction(request: PredictionRequest) -> dict:
                 },
             )
 
-    artifact_value = lineage.get("artifact_path")
-    if not artifact_value:
-        raise HTTPException(
-            status_code=404,
-            detail="Model artifact not found for this training run",
-        )
-
-    artifact_path = Path(artifact_value)
+    artifact_path = Path(model_record.artifact_path)
     if not artifact_path.is_absolute():
         artifact_path = PROJECT_ROOT / artifact_path
     artifact_path = artifact_path.resolve()
@@ -699,7 +732,7 @@ def make_prediction(request: PredictionRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(
             status_code=500,
-            detail="Training lineage references an invalid model artifact",
+            detail="Registered model references an invalid artifact path",
         ) from exc
 
     feature_data = pd.DataFrame(

@@ -102,6 +102,7 @@ def test_get_dataset_returns_metadata(
     assert body["original_filename"] == "iris.csv"
     assert body["sha256"] == "a" * 64
     assert body["target_column"] == "target"
+    assert body["row_count"] == 10
     assert "file_path" not in body
 
 
