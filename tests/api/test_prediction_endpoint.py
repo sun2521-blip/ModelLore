@@ -24,8 +24,10 @@ IRIS_FEATURES = {
 }
 
 
+
+
 @pytest.fixture
-def run_setup(tmp_path, monkeypatch):
+def run_setup(tmp_path, monkeypatch, db_session_factory):
     artifact_dir = tmp_path / "artifacts"
     lineage_dir = tmp_path / "lineage"
     artifact_dir.mkdir()
@@ -51,11 +53,38 @@ def run_setup(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    return lineage_run_id, artifact_path, record, lineage_dir
+    with db_session_factory() as db:
+        job = main.TrainingJob(config_name="iris", status="FINISHED")
+        db.add(job)
+        db.flush()
+
+        model_record = main.ModelRecord(
+            training_job_id=job.id,
+            lineage_run_id=lineage_run_id,
+            feature_columns=IRIS_COLUMNS,
+            name="iris",
+            artifact_path="artifacts/model.joblib",
+            metrics={},
+        )
+        db.add(model_record)
+        db.commit()
+
+        job_id = job.id
+        model_id = model_record.id
+
+    return (
+        lineage_run_id,
+        artifact_path,
+        record,
+        lineage_dir,
+        db_session_factory,
+        job_id,
+        model_id,
+    )
 
 
 def test_predict_returns_predictions(run_setup, api_client):
-    lineage_run_id, artifact_path, _, _ = run_setup
+    lineage_run_id, artifact_path, _, *_ = run_setup
 
     with (
         patch("api.main.load_model", return_value=object()) as load_model,
@@ -80,7 +109,7 @@ def test_predict_returns_predictions(run_setup, api_client):
 
 
 def test_predict_supports_multiple_rows(run_setup, api_client):
-    lineage_run_id, _, _, _ = run_setup
+    lineage_run_id, _, _, *_ = run_setup
 
     second_row = {
         "sepal length (cm)": 6.0,
@@ -121,7 +150,7 @@ def test_predict_returns_404_for_unknown_run(run_setup, api_client):
 
 
 def test_predict_returns_404_for_missing_artifact(run_setup, api_client):
-    lineage_run_id, artifact_path, _, _ = run_setup
+    lineage_run_id, artifact_path, _, *_ = run_setup
     artifact_path.unlink()
 
     with patch(
@@ -140,7 +169,7 @@ def test_predict_returns_404_for_missing_artifact(run_setup, api_client):
 
 
 def test_predict_rejects_empty_features(run_setup, api_client):
-    lineage_run_id, _, _, _ = run_setup
+    lineage_run_id, _, _, *_ = run_setup
 
     response = api_client.post(
         "/predict",
@@ -154,7 +183,7 @@ def test_predict_rejects_empty_features(run_setup, api_client):
 
 
 def test_predict_rejects_missing_feature_column(run_setup, api_client):
-    lineage_run_id, _, _, _ = run_setup
+    lineage_run_id, _, _, *_ = run_setup
 
     incomplete_features = dict(IRIS_FEATURES)
     incomplete_features.pop("petal width (cm)")
@@ -172,7 +201,7 @@ def test_predict_rejects_missing_feature_column(run_setup, api_client):
 
 
 def test_predict_rejects_extra_feature_column(run_setup, api_client):
-    lineage_run_id, _, _, _ = run_setup
+    lineage_run_id, _, _, *_ = run_setup
 
     invalid_features = {
         **IRIS_FEATURES,
@@ -194,13 +223,12 @@ def test_predict_rejects_unsuccessful_training_run(
     run_setup,
     api_client,
 ):
-    lineage_run_id, _, record, lineage_dir = run_setup
+    lineage_run_id, _, _, _, db_session_factory, job_id, _ = run_setup
 
-    record["status"] = "FAILED"
-    (lineage_dir / f"{lineage_run_id}.json").write_text(
-        json.dumps(record),
-        encoding="utf-8",
-    )
+    with db_session_factory() as db:
+        job = db.get(main.TrainingJob, job_id)
+        job.status = "FAILED"
+        db.commit()
 
     with patch("api.main.load_model") as load_model:
         response = api_client.post(
@@ -219,13 +247,12 @@ def test_predict_rejects_lineage_without_feature_metadata(
     run_setup,
     api_client,
 ):
-    lineage_run_id, _, record, lineage_dir = run_setup
+    lineage_run_id, _, _, _, db_session_factory, _, model_id = run_setup
 
-    record.pop("feature_columns")
-    (lineage_dir / f"{lineage_run_id}.json").write_text(
-        json.dumps(record),
-        encoding="utf-8",
-    )
+    with db_session_factory() as db:
+        model_record = db.get(main.ModelRecord, model_id)
+        model_record.feature_columns = None
+        db.commit()
 
     response = api_client.post(
         "/predict",
@@ -242,13 +269,12 @@ def test_predict_rejects_artifact_outside_artifact_directory(
     run_setup,
     api_client,
 ):
-    lineage_run_id, _, record, lineage_dir = run_setup
+    lineage_run_id, _, _, _, db_session_factory, _, model_id = run_setup
 
-    record["artifact_path"] = "configs/iris.yaml"
-    (lineage_dir / f"{lineage_run_id}.json").write_text(
-        json.dumps(record),
-        encoding="utf-8",
-    )
+    with db_session_factory() as db:
+        model_record = db.get(main.ModelRecord, model_id)
+        model_record.artifact_path = "configs/iris.yaml"
+        db.commit()
 
     with patch("api.main.load_model") as load_model:
         response = api_client.post(

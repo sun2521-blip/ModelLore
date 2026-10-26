@@ -505,6 +505,8 @@ def start_training(
         db.add(
             ModelRecord(
                 training_job_id=job.id,
+                lineage_run_id=UUID(str(lineage_run_id)),
+                feature_columns=result.get("feature_columns"),
                 name=job.config_name,
                 artifact_path=str(artifact_path),
                 metrics=result.get("metrics"),
@@ -651,34 +653,34 @@ def get_run(mlflow_run_id: str) -> dict:
 
 
 @app.post("/predict", dependencies=[Depends(require_api_key)])
-def make_prediction(request: PredictionRequest) -> dict:
-    lineage_path = LINEAGE_DIR / f"{request.lineage_run_id}.json"
+def make_prediction(
+    request: PredictionRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    model_record = (
+        db.query(ModelRecord)
+        .filter(ModelRecord.lineage_run_id == request.lineage_run_id)
+        .first()
+    )
 
-    try:
-        with lineage_path.open("r", encoding="utf-8") as file:
-            lineage = json.load(file)
-    except FileNotFoundError as exc:
+    if model_record is None:
         raise HTTPException(
             status_code=404,
-            detail="Lineage run not found",
-        ) from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=500,
-            detail="Unable to read training lineage",
-        ) from exc
+            detail="Registered model not found for this lineage run",
+        )
 
-    if lineage.get("status") != "FINISHED":
+    job = model_record.training_job
+    if job.status != "FINISHED":
         raise HTTPException(
             status_code=409,
             detail="Cannot predict with an unsuccessful training run",
         )
 
-    feature_columns = lineage.get("feature_columns")
+    feature_columns = model_record.feature_columns
     if not feature_columns:
         raise HTTPException(
             status_code=409,
-            detail="This run has no saved feature-column metadata",
+            detail="This model has no saved feature-column metadata; retrain it",
         )
 
     expected_columns = set(feature_columns)
@@ -695,14 +697,7 @@ def make_prediction(request: PredictionRequest) -> dict:
                 },
             )
 
-    artifact_value = lineage.get("artifact_path")
-    if not artifact_value:
-        raise HTTPException(
-            status_code=404,
-            detail="Model artifact not found for this training run",
-        )
-
-    artifact_path = Path(artifact_value)
+    artifact_path = Path(model_record.artifact_path)
     if not artifact_path.is_absolute():
         artifact_path = PROJECT_ROOT / artifact_path
     artifact_path = artifact_path.resolve()
@@ -712,7 +707,7 @@ def make_prediction(request: PredictionRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(
             status_code=500,
-            detail="Training lineage references an invalid model artifact",
+            detail="Registered model references an invalid artifact path",
         ) from exc
 
     feature_data = pd.DataFrame(

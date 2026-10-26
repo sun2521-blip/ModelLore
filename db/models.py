@@ -113,3 +113,9 @@ class ModelRecord(Base):
     training_job: Mapped[TrainingJob] = relationship(
         back_populates="model"
     )
+    lineage_run_id: Mapped[uuid.UUID | None] = mapped_column(
+    Uuid, nullable=True, unique=True, index=True
+    )
+    feature_columns: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )

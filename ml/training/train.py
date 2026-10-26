@@ -228,6 +228,7 @@ def train_model(
         "mlflow_run_id": mlflow_run.info.run_id,
         "dataset_hash": dataset_hash,
         "config_hash": config_hash,
+        "feature_columns": feature_columns,
     }
 
 
