@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import io
 import json
 import os
 import secrets
@@ -28,7 +29,7 @@ from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
 from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
-import io
+
 
 app = FastAPI(title="ModelLore API", version="0.2.0")
 
@@ -120,7 +121,7 @@ async def upload_dataset(
             detail="Uploaded CSV is empty",
         )
 
-    
+
     try:
         decoded = content.decode("utf-8-sig")
         reader = csv.reader(io.StringIO(decoded, newline=""), strict=True)
@@ -451,6 +452,7 @@ def start_training(
         db.add(job)
         db.commit()
         db.refresh(job)
+        job_id = job.id
     except Exception as exc:
         db.rollback()
         raise HTTPException(
@@ -474,11 +476,18 @@ def start_training(
             status_code=400,
             detail=str(exc),
         ) from exc
+
     except Exception as exc:
         job.status = "FAILED"
         job.error_message = str(exc)
         job.completed_at = datetime.now(timezone.utc)
         db.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail="Training failed unexpectedly",
+        ) from exc
+
 
         raise HTTPException(
             status_code=500,
@@ -513,14 +522,30 @@ def start_training(
             )
         )
 
+
     try:
         db.commit()
     except Exception as exc:
         db.rollback()
+        failure_message = (
+            "Training completed but its database record could not be saved"
+        )
+
+        try:
+            failed_job = db.get(TrainingJob, job_id)
+            if failed_job is not None:
+                failed_job.status = "FAILED"
+                failed_job.error_message = failure_message
+                failed_job.completed_at = datetime.now(timezone.utc)
+                db.commit()
+        except Exception:
+            db.rollback()
+
         raise HTTPException(
             status_code=500,
-            detail="Training completed but its database record could not be saved",
+            detail=failure_message,
         ) from exc
+
 
     return {
         "status": "completed",
