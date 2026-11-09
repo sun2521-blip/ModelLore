@@ -489,14 +489,15 @@ Replace the lineage ID and feature names/values with those for your trained mode
 
 For the exact request schemas and response shapes, visit [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
-### Models trained before v0.4.1
+### Older models
 
-`/predict` finds a model by its `lineage_run_id` and checks each row against the model's saved `feature_columns`. Models registered before v0.4.1 were saved without these fields, so the newer prediction flow can't use them:
+`/predict` finds a model by its `lineage_run_id`, checks each row against the model's saved `feature_columns`, and verifies the artifact's recorded SHA-256 before loading it. Models registered by earlier versions were saved without some of these fields, so the current prediction flow can't use them:
 
-- No `lineage_run_id`: `/predict` can't find the model and returns `404`.
-- No `feature_columns`: `/predict` returns `409` and asks you to retrain.
+- No `lineage_run_id` (registered before v0.4.1): `/predict` can't find the model and returns `404`.
+- No `feature_columns` (registered before v0.4.1): `/predict` returns `409` and asks you to retrain.
+- No recorded artifact hash (registered before v0.5.0): `/predict` returns `409` and asks you to retrain.
 
-Retrain affected models with `POST /train`; the new model is saved with both fields. Separately, lineage records written before configuration snapshots were added can't be [verified by rerunning](#verify-a-training-run).
+Retrain affected models with `POST /train`; the new model is saved with all three. Run `uv run alembic upgrade head` after upgrading so the database has the new column. Separately, lineage records written before configuration snapshots were added can't be [verified by rerunning](#verify-a-training-run).
 
 ### API behavior and current limits
 

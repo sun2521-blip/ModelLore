@@ -1,4 +1,5 @@
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -48,11 +49,15 @@ model:
     assert result["dataset_hash"]
     assert result["config_hash"]
     assert Path(result["model_path"]).is_file()
+    assert result["artifact_sha256"] == hashlib.sha256(
+        Path(result["model_path"]).read_bytes()
+    ).hexdigest()
 
     lineage_path = Path(result["lineage_path"])
     record = json.loads(lineage_path.read_text(encoding="utf-8"))
 
     assert record["status"] == "FINISHED"
+    assert record["artifact_sha256"] == result["artifact_sha256"]
     assert record["config_snapshot"]["dataset"]["name"] == "iris"
 
     client = mlflow.tracking.MlflowClient()

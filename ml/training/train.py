@@ -16,6 +16,7 @@ from ml.evaluation.evaluator import evaluate_model
 from ml.reproducibility import (
     hash_config,
     hash_dataframe,
+    hash_file,
     set_random_seed,
 )
 from ml.tracking import log_training_results, start_run
@@ -137,6 +138,7 @@ def train_model(
                 f"{model_config.model_type}_{dataset_name}_{run_id}",
                 artifact_dir=artifact_dir,
             )
+            artifact_sha256 = hash_file(model_path)
 
             # Log both the saved file and MLflow model
             log_training_results(
@@ -153,6 +155,7 @@ def train_model(
                 parameters=model_config.parameters,
                 metrics=metrics,
                 artifact_path=str(model_path),
+                artifact_sha256=artifact_sha256,
                 run_id=run_id,
                 lineage_dir=lineage_dir,
                 feature_columns=feature_columns,
@@ -223,6 +226,7 @@ def train_model(
         "parameters": model_config.parameters,
         "metrics": metrics,
         "model_path": str(model_path),
+        "artifact_sha256": artifact_sha256,
         "run_id": lineage_record["run_id"],
         "lineage_path": lineage_record["lineage_path"],
         "mlflow_run_id": mlflow_run.info.run_id,

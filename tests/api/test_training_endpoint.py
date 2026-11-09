@@ -25,6 +25,7 @@ def test_train_iris_returns_training_results(api_client):
             "metrics": {"accuracy": 0.95},
             "parameters": {"n_estimators": 50},
             "model_path": "artifacts/model.joblib",
+            "artifact_sha256": "a" * 64,
             "lineage_path": f"lineage/{lineage_run_id}.json",
             "feature_columns": ["sepal length (cm)"],
         },
@@ -137,6 +138,7 @@ def test_train_marks_job_failed_when_model_persistence_fails(
         "metrics": {"accuracy": 0.9},
         "parameters": {},
         "model_path": "artifacts/model.joblib",
+        "artifact_sha256": "a" * 64,
         "lineage_path": f"lineage/{lineage_run_id}.json",
         "feature_columns": ["feature"],
     }
@@ -190,6 +192,7 @@ def successful_training_result(**overrides):
         "metrics": {"accuracy": 0.9},
         "parameters": {},
         "model_path": "artifacts/model.joblib",
+        "artifact_sha256": "a" * 64,
         "lineage_path": "lineage/not-read-by-the-endpoint.json",
         "feature_columns": ["feature"],
     }
@@ -222,6 +225,7 @@ def test_train_registers_model_from_training_result(
 
 UNUSABLE_RESULTS = {
     "missing-model-path": {"model_path": None},
+    "missing-artifact-hash": {"artifact_sha256": None},
     "invalid-lineage-run-id": {"run_id": "not-a-uuid"},
     "missing-feature-columns": {"feature_columns": None},
 }

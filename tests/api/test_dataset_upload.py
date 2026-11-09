@@ -181,6 +181,7 @@ def test_train_uses_custom_target_column(
             "metrics": {},
             "parameters": {},
             "model_path": "artifacts/model.joblib",
+            "artifact_sha256": "a" * 64,
             "lineage_path": "lineage/test-lineage-id.json",
             "feature_columns": ["feature"],
         },

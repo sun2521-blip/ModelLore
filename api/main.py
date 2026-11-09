@@ -38,7 +38,11 @@ from api.limits import (
 )
 from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
-from ml.inference.predict import load_model, predict
+from ml.inference.predict import (
+    ArtifactIntegrityError,
+    load_verified_model,
+    predict,
+)
 from ml.training.train import train_model
 
 
@@ -645,6 +649,7 @@ def start_training(
     lineage_path = result.get("lineage_path")
     lineage_run_id = result.get("run_id")
     artifact_path = result.get("model_path")
+    artifact_sha256 = result.get("artifact_sha256")
     feature_columns = result.get("feature_columns")
 
     try:
@@ -653,7 +658,12 @@ def start_training(
         model_lineage_run_id = None
 
     # A job only counts as FINISHED when it leaves a model that /predict can use.
-    if not artifact_path or model_lineage_run_id is None or not feature_columns:
+    if (
+        not artifact_path
+        or not artifact_sha256
+        or model_lineage_run_id is None
+        or not feature_columns
+    ):
         unusable_message = (
             "Training completed but did not produce a usable model"
         )
@@ -677,6 +687,7 @@ def start_training(
             feature_columns=feature_columns,
             name=job.config_name,
             artifact_path=str(artifact_path),
+            artifact_sha256=artifact_sha256,
             metrics=result.get("metrics"),
         )
     )
@@ -883,6 +894,12 @@ def make_prediction(
                 },
             )
 
+    if not model_record.artifact_sha256:
+        raise HTTPException(
+            status_code=409,
+            detail="This model has no recorded artifact hash; retrain it",
+        )
+
     artifact_path = Path(model_record.artifact_path)
     if not artifact_path.is_absolute():
         artifact_path = PROJECT_ROOT / artifact_path
@@ -902,8 +919,17 @@ def make_prediction(
     )
 
     try:
-        model = load_model(artifact_path)
+        model = load_verified_model(
+            artifact_path,
+            model_record.artifact_sha256,
+            ARTIFACT_DIR,
+        )
         predictions = predict(model, feature_data)
+    except ArtifactIntegrityError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Model artifact failed its integrity check",
+        ) from exc
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=404,

@@ -54,6 +54,7 @@ def save_lineage(
     config_path: str | None = None,
     config_snapshot: dict | None = None,
     feature_columns: list[str] | None = None,
+    artifact_sha256: str | None = None,
 ) -> dict:
     lineage_dir = Path(lineage_dir)
     lineage_dir.mkdir(parents=True, exist_ok=True)
@@ -70,6 +71,7 @@ def save_lineage(
         "parameters": parameters,
         "metrics": metrics,
         "artifact_path": artifact_path,
+        "artifact_sha256": artifact_sha256,
         "git_commit": git_metadata["git_commit"],
         "git_dirty": git_metadata["git_dirty"],
         "status": status,

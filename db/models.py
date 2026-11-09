@@ -119,3 +119,6 @@ class ModelRecord(Base):
     feature_columns: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True
     )
+    artifact_sha256: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
