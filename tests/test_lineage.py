@@ -1,6 +1,9 @@
 
 import json
 
+import pytest
+
+from ml import lineage as lineage_module
 from ml.lineage import save_lineage
 
 
@@ -120,3 +123,28 @@ def test_save_lineage_records_mlflow_artifact_uri(tmp_path):
     assert saved_record["mlflow_artifact_uri"] == (
         "file:///tmp/mlruns/123/artifacts"
     )
+
+
+
+@pytest.mark.parametrize(
+    "launch_error",
+    [FileNotFoundError("git not installed"), PermissionError("[WinError 5] Access is denied")],
+)
+def test_save_lineage_survives_git_that_cannot_start(tmp_path, monkeypatch, launch_error):
+    def refuse_to_start(*args, **kwargs):
+        raise launch_error
+
+    monkeypatch.setattr(lineage_module.subprocess, "run", refuse_to_start)
+
+    record = lineage_module.save_lineage(
+        dataset_hash="dataset-hash",
+        config_hash="config-hash",
+        parameters={},
+        metrics={},
+        artifact_path="",
+        lineage_dir=tmp_path,
+    )
+
+    assert record["git_commit"] is None
+    assert record["git_dirty"] is None
+    assert (tmp_path / f"{record['run_id']}.json").is_file()

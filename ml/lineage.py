@@ -30,7 +30,10 @@ def get_git_metadata() -> dict:
             "git_dirty": bool(status),
         }
 
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    # Git metadata is best-effort: a missing git (Docker image) or a refused
+    # process launch (OSError covers FileNotFoundError and PermissionError)
+    # must never stop lineage from being saved.
+    except (subprocess.CalledProcessError, OSError):
         return {
             "git_commit": None,
             "git_dirty": None,
