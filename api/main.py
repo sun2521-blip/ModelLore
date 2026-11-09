@@ -1,8 +1,8 @@
 import csv
 import hashlib
+import hmac
 import io
 import os
-import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -45,13 +45,14 @@ def require_api_key(
 ) -> None:
     expected_key = os.getenv("MLFLOWHUB_API_KEY")
 
-    if not expected_key:
+    # A blank or whitespace-only key counts as "not configured": fail closed.
+    if not expected_key or not expected_key.strip():
         raise HTTPException(
             status_code=503,
             detail="API authentication is not configured",
         )
 
-    if not x_api_key or not secrets.compare_digest(
+    if not x_api_key or not hmac.compare_digest(
         x_api_key.encode("utf-8"),
         expected_key.encode("utf-8"),
     ):
