@@ -1,12 +1,19 @@
 
 import json
+import platform
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-import subprocess
+
+import sklearn
+
+from ml.reproducibility import hash_file
 
 
 DEFAULT_LINEAGE_DIR = Path("lineage")
+# The lock file that pinned this environment; hashed into every lineage record.
+LOCK_FILE = Path(__file__).resolve().parents[1] / "uv.lock"
 
 
 def get_git_metadata() -> dict:
@@ -38,6 +45,20 @@ def get_git_metadata() -> dict:
             "git_commit": None,
             "git_dirty": None,
         }
+
+
+def get_runtime_environment() -> dict:
+    """Describe the environment a model was trained in."""
+    try:
+        lock_file_sha256 = hash_file(LOCK_FILE)
+    except OSError:
+        lock_file_sha256 = None
+
+    return {
+        "python_version": platform.python_version(),
+        "scikit_learn_version": sklearn.__version__,
+        "lock_file_sha256": lock_file_sha256,
+    }
 
 
 def save_lineage(
@@ -74,6 +95,7 @@ def save_lineage(
         "artifact_sha256": artifact_sha256,
         "git_commit": git_metadata["git_commit"],
         "git_dirty": git_metadata["git_dirty"],
+        "environment": get_runtime_environment(),
         "status": status,
         "error": error,
         "mlflow_artifact_uri": mlflow_artifact_uri,
