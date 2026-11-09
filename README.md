@@ -698,12 +698,13 @@ ModelLore uses PostgreSQL for persistent metadata and Docker Compose for local d
 
 Prerequisites: Docker Desktop with the Docker Compose plugin enabled.
 
-Set the API key in your shell before starting the services:
+Compose needs two secrets: the API key and a password for the PostgreSQL database. There are no built-in defaults, so the services won't start until both are set. The easiest place is `.env` (copy `.env.example`), which Compose reads on its own. Or set them in your shell:
 
 PowerShell
 
 ```powershell
 $env:MLFLOWHUB_API_KEY = "local-dev-key-change-me"
+$env:POSTGRES_PASSWORD = "local-db-password-change-me"
 docker compose up --build
 ```
 
@@ -711,10 +712,24 @@ Git Bash
 
 ```bash
 export MLFLOWHUB_API_KEY="your-local-api-key"
+export POSTGRES_PASSWORD="your-local-db-password"
 docker compose up -d --build
 ```
 
-The API container runs Alembic migrations before starting Uvicorn. PostgreSQL must become healthy before the API starts.
+Use letters and digits for `POSTGRES_PASSWORD`; it is placed inside the database URL, where characters such as `@`, `:` and `/` would break it.
+
+The API container runs Alembic migrations before starting Uvicorn. PostgreSQL must become healthy before the API starts. Both services listen on `127.0.0.1` only, so they are reachable from your own machine but not from the rest of the network.
+
+**Upgrading an existing setup?** PostgreSQL only reads `POSTGRES_PASSWORD` when it first creates its data volume. Keep using the password your volume was created with. If you never set one, that was the old built-in `modellore_dev_password`: set `POSTGRES_PASSWORD` to that value, then change it with `ALTER USER` if you like.
+
+**On Linux:** the API container runs as an unprivileged user (UID 10001), not as root. Give that user the folders Compose mounts before the first start:
+
+```bash
+mkdir -p data/uploads artifacts lineage mlruns
+sudo chown -R 10001:10001 data/uploads artifacts lineage mlruns
+```
+
+Docker Desktop on Windows and macOS handles this for you.
 
 Check service status and database connectivity:
 

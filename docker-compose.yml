@@ -7,9 +7,10 @@ services:
     environment:
       POSTGRES_DB: modellore
       POSTGRES_USER: modellore
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-modellore_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env file}
+    # Reachable from this machine only, for local tools such as psql.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -25,12 +26,21 @@ services:
     container_name: modellore-api
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql+psycopg://modellore:${POSTGRES_PASSWORD:-modellore_dev_password}@db:5432/modellore
+      DATABASE_URL: postgresql+psycopg://modellore:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env file}@db:5432/modellore
       MLFLOWHUB_API_KEY: ${MLFLOWHUB_API_KEY:?Set MLFLOWHUB_API_KEY in your environment or .env file}
       # Keep MLflow's run database on the ./mlruns mount so run history survives rebuilds.
       MLFLOW_TRACKING_URI: sqlite:////app/mlruns/mlflow.db
+      # Optional overrides; empty means the built-in defaults.
+      MODELLORE_CORS_ORIGINS: ${MODELLORE_CORS_ORIGINS:-}
+      MODELLORE_MAX_UPLOAD_ROWS: ${MODELLORE_MAX_UPLOAD_ROWS:-}
+      MODELLORE_MAX_UPLOAD_COLUMNS: ${MODELLORE_MAX_UPLOAD_COLUMNS:-}
+      MODELLORE_MAX_PREDICT_ROWS: ${MODELLORE_MAX_PREDICT_ROWS:-}
+      MODELLORE_RATE_LIMIT_UPLOAD: ${MODELLORE_RATE_LIMIT_UPLOAD:-}
+      MODELLORE_RATE_LIMIT_TRAIN: ${MODELLORE_RATE_LIMIT_TRAIN:-}
+      MODELLORE_RATE_LIMIT_PREDICT: ${MODELLORE_RATE_LIMIT_PREDICT:-}
+    # Reachable from this machine only.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./artifacts:/app/artifacts
