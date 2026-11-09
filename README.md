@@ -421,11 +421,13 @@ The response includes a dataset ID. Save it for the training request.
 
 Current upload restrictions:
 
-- CSV files only.
+- CSV files only, saved under a server-generated name; the name you upload with is kept for display only.
 
-- Maximum file size of 10 MiB.
+- Maximum file size of 10 MiB, 100,000 data rows, and 200 columns.
 
-- Invalid UTF-8, empty files, and invalid or duplicate headers are rejected.
+- At least one data row and at least two columns (features and a target), with every row the same width as the header.
+
+- Invalid UTF-8, NUL bytes, empty files, and invalid or duplicate headers are rejected.
 
 ### 5. Train on the uploaded dataset
 
@@ -503,15 +505,73 @@ Retrain affected models with `POST /train`; the new model is saved with all thre
 
 - `GET /health` is public; protected endpoints require `X-API-Key`.
 
-- If `MLFLOWHUB_API_KEY` is unset, protected requests fail closed.
+- If `MLFLOWHUB_API_KEY` is unset or blank, protected requests fail closed.
 
-- CSV uploads accept `.csv` files up to 10 MiB and validate encoding and headers.
+- CSV uploads accept `.csv` files up to 10 MiB, 100,000 rows, and 200 columns, and validate encoding, headers, and row shape.
 
 - `target_column` is optional. When omitted for uploaded CSV training, the configured target column is used.
 
-- Uploaded datasets are referenced by IDs rather than arbitrary client-supplied filesystem paths.
+- Uploaded datasets are referenced by IDs rather than arbitrary client-supplied filesystem paths, and only datasets the API registered can be trained on.
 
-- This is an early-stage local development API, not a hardened public production service. Do not expose it directly to the public internet without additional security, rate limiting, and operational controls.
+- A prediction request can carry up to 1,000 rows.
+
+- Uploads, training, and predictions are rate limited per client: 10, 5, and 60 requests a minute. Going over returns `429` with a `Retry-After` header.
+
+- Requests with unknown fields are rejected with `422`.
+
+These limits can be changed with environment variables:
+
+| Variable | Default |
+|---|---|
+| `MODELLORE_MAX_UPLOAD_ROWS` | 100000 |
+| `MODELLORE_MAX_UPLOAD_COLUMNS` | 200 |
+| `MODELLORE_MAX_PREDICT_ROWS` | 1000 |
+| `MODELLORE_RATE_LIMIT_UPLOAD` | 10 per minute |
+| `MODELLORE_RATE_LIMIT_TRAIN` | 5 per minute |
+| `MODELLORE_RATE_LIMIT_PREDICT` | 60 per minute |
+| `MODELLORE_CORS_ORIGINS` | empty: no browser on another origin may call the API |
+
+`MODELLORE_CORS_ORIGINS` takes a comma-separated list of exact origins, for example `http://localhost:5173`. Wildcards are refused at startup.
+
+This is an early-stage local development API, not a hardened public production service. See [Security baseline](#security-baseline) for what it does and doesn't protect against.
+
+---
+
+## Security baseline
+
+ModelLore aims for a sensible baseline for a project that runs on your own machine. It is not hardened for public, multi-user deployment.
+
+### What is covered
+
+- **Authentication:** every endpoint except the health checks and the interactive docs needs `X-API-Key`. The key is compared in constant time, there is no default key, and an unset or blank key makes the API refuse all protected requests instead of opening up.
+
+- **Model artifacts:** joblib files can run code when they are loaded, so ModelLore treats them carefully. It only loads artifacts it wrote itself, from the `artifacts/` directory, and only after checking that the file's SHA-256 still matches the hash recorded at training time. The file is read once and loaded from those same bytes. A model is never loaded from a path or file supplied by a client.
+
+- **Uploads:** size, row, and column limits; extension and content checks; server-generated file names; client file names reduced to a plain display name, so path tricks like `../../` go nowhere. CSV cells are parsed as data and never evaluated.
+
+- **Input validation:** request bodies and parameters are checked with Pydantic, unknown fields are rejected, and YAML configuration is loaded with `yaml.safe_load` only. Database access goes through SQLAlchemy with bound parameters.
+
+- **Errors and logs:** clients get messages written for them or a generic message, never stack traces, file paths, or dataset values. ModelLore's own log lines record the event, the IDs involved, and the type of error; they never record API keys, dataset contents, request bodies, or exception messages. MLflow keeps only the failure type for a failed run, not its traceback.
+
+- **Network:** CORS is off unless you list exact origins. Uploads, training, and predictions are rate limited. In Docker Compose, PostgreSQL and the API listen on `127.0.0.1` only, there is no default database password, and the API container runs as an unprivileged user.
+
+- **Dependencies:** every package is pinned with a hash in `uv.lock` and `requirements.txt`, and the set was checked with `pip-audit` for v0.5.0 with no known vulnerabilities found.
+
+### What is not covered
+
+- **One shared key:** there are no user accounts, roles, or per-user permissions. Anyone with the key can do everything.
+
+- **No TLS:** traffic is plain HTTP. Put a reverse proxy with HTTPS in front if the API ever leaves your machine.
+
+- **A simple rate limiter:** counts live in memory, reset when the API restarts, aren't shared between processes, and key on the client's IP address, which a proxy hides. Under Docker Compose every caller arrives from the Docker network's gateway address, so all clients share one budget.
+
+- **Trust in the artifact directory:** the hash check catches changed files, but anyone who can write to both `artifacts/` and the database could replace a model and its hash together.
+
+- **Uploads are checked after they arrive:** an upload that declares its size is refused straight away if it's too big, but one sent without a declared size is received in full before it is refused.
+
+- **Unexpected errors:** an error the API doesn't handle at all still returns a plain `500` to the client, but Uvicorn writes its traceback to the server log.
+
+- **No audit trail** of who called which endpoint, and no automated secret rotation.
 
 ---
 
