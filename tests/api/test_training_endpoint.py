@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
@@ -5,6 +6,7 @@ import mlflow
 import pytest
 from sqlalchemy import select
 from db.models import ModelRecord, TrainingJob
+from ml.errors import TrainingInputError
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -41,6 +43,8 @@ def test_train_iris_returns_training_results(api_client):
     assert body["lineage_run_id"] == lineage_run_id
     assert body["mlflow_run_id"] == MLFLOW_RUN_ID
     assert body["metrics"]["accuracy"] == 0.95
+    # The server-side lineage file path is not part of the response.
+    assert "lineage_path" not in body
 
 
 def test_train_rejects_unknown_config_name(api_client):
@@ -53,12 +57,14 @@ def test_train_rejects_unknown_config_name(api_client):
 
 
 
-def test_train_handles_training_value_error(
+def test_train_returns_safe_input_errors_as_written(
     api_client, db_session_factory
 ):
+    safe_message = "Target column 'species' not found in dataset."
+
     with patch(
         "api.main.train_model",
-        side_effect=ValueError("Invalid training configuration"),
+        side_effect=TrainingInputError(safe_message),
     ):
         response = api_client.post(
             "/train",
@@ -66,18 +72,70 @@ def test_train_handles_training_value_error(
         )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid training configuration"
+    assert response.json()["detail"] == safe_message
 
     with db_session_factory() as session:
         failed_job = session.scalar(
-            select(TrainingJob).where(
-                TrainingJob.error_message == "Invalid training configuration"
-            )
+            select(TrainingJob).where(TrainingJob.error_message == safe_message)
         )
 
         assert failed_job is not None
         assert failed_job.status == "FAILED"
         assert failed_job.completed_at is not None
+
+
+HOSTILE_FAILURES = {
+    "library-value-error": (
+        ValueError("could not convert string to float: 'secret-patient-123'"),
+        400,
+        "The dataset or configuration could not be used for training",
+    ),
+    "missing-file-with-path": (
+        FileNotFoundError("Dataset file not found: C:\\Users\\secret\\data.csv"),
+        400,
+        "The dataset or configuration could not be used for training",
+    ),
+    "unexpected-error": (
+        RuntimeError("database at /var/lib/secret refused the connection"),
+        500,
+        "Training failed unexpectedly",
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("failure", "status_code", "expected_message"),
+    list(HOSTILE_FAILURES.values()),
+    ids=list(HOSTILE_FAILURES),
+)
+def test_train_never_leaks_exception_details(
+    api_client,
+    db_session_factory,
+    caplog,
+    failure,
+    status_code,
+    expected_message,
+):
+    with (
+        caplog.at_level(logging.INFO, logger="modellore.api"),
+        patch("api.main.train_model", side_effect=failure),
+    ):
+        response = api_client.post("/train", json={"config_name": "iris"})
+
+    assert response.status_code == status_code
+    assert response.json() == {"detail": expected_message}
+
+    with db_session_factory() as session:
+        job = session.scalar(select(TrainingJob))
+        assert job.status == "FAILED"
+        assert job.error_message == expected_message
+
+    # Logs say what failed and where, never the message, a path, or the key.
+    assert f"job_id={job.id}" in caplog.text
+    assert f"error_type={type(failure).__name__}" in caplog.text
+    for secret in ("secret", "test-api-key", "Traceback"):
+        assert secret not in caplog.text
+        assert secret not in response.text
 
 
 def test_get_run_returns_run_details(api_client):

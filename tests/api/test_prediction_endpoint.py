@@ -375,3 +375,30 @@ def test_predict_loads_a_real_verified_artifact(run_setup, api_client):
 
     assert response.status_code == 200
     assert response.json()["predictions"] == [1]
+
+
+def test_predict_hides_library_error_text(run_setup, api_client, caplog):
+    import logging
+
+    lineage_run_id, *_ = run_setup
+
+    with (
+        caplog.at_level(logging.INFO, logger="modellore.api"),
+        patch("api.main.load_verified_model", return_value=object()),
+        patch(
+            "api.main.predict",
+            side_effect=ValueError("could not convert string to float: 'secret-cell'"),
+        ),
+    ):
+        response = api_client.post(
+            "/predict",
+            json={
+                "lineage_run_id": str(lineage_run_id),
+                "features": [IRIS_FEATURES],
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid prediction input"}
+    assert "error_type=ValueError" in caplog.text
+    assert "secret-cell" not in caplog.text

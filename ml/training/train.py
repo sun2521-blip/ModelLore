@@ -1,5 +1,4 @@
 
-import traceback
 from uuid import uuid4
 
 import mlflow
@@ -12,6 +11,7 @@ from ml.artifacts import save_model
 from ml.config import ModelConfig, TrainingConfig
 from ml.config_loader import load_config
 from ml.data.preprocessing import create_preprocessor
+from ml.errors import TrainingInputError
 from ml.evaluation.evaluator import evaluate_model
 from ml.reproducibility import (
     hash_config,
@@ -70,7 +70,7 @@ def train_model(
         )
 
     else:
-        raise ValueError(f"Unsupported dataset: {dataset_name}")
+        raise TrainingInputError(f"Unsupported dataset: {dataset_name}")
 
     feature_columns = X.columns.tolist()
     
@@ -79,13 +79,19 @@ def train_model(
     config_hash = hash_config(config)
 
     # Split dataset
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=training_config.test_size,
-        random_state=training_config.random_seed,
-        stratify=y,
-    )
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=training_config.test_size,
+            random_state=training_config.random_seed,
+            stratify=y,
+        )
+    except ValueError as exc:
+        raise TrainingInputError(
+            "Each target class needs enough rows for a stratified "
+            "train/test split; add rows or lower training.test_size."
+        ) from exc
 
     preprocessor = create_preprocessor(X_train)
 
@@ -173,16 +179,15 @@ def train_model(
             )
 
         except Exception as exc:
-            error_message = f"{type(exc).__name__}: {exc}"
+            # Only messages known to be safe are kept; anything else could
+            # carry file paths or dataset values, so just its type is recorded.
+            if isinstance(exc, TrainingInputError):
+                error_message = f"{type(exc).__name__}: {exc}"
+            else:
+                error_message = type(exc).__name__
 
-            # Record failure details in MLflow
             mlflow.set_tag("status", "FAILED")
             mlflow.set_tag("failure_type", type(exc).__name__)
-            mlflow.set_tag("failure_message", str(exc))
-            mlflow.set_tag(
-                "failure_traceback",
-                traceback.format_exc()[-4000:],
-            )
 
             # Create a failure record only if no lineage record exists
             if lineage_record is None:

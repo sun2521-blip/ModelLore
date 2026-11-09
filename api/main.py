@@ -2,6 +2,7 @@ import csv
 import hashlib
 import hmac
 import io
+import logging
 import os
 import re
 import unicodedata
@@ -38,6 +39,7 @@ from api.limits import (
 )
 from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
+from ml.errors import TrainingInputError
 from ml.inference.predict import (
     ArtifactIntegrityError,
     load_verified_model,
@@ -47,6 +49,17 @@ from ml.training.train import train_model
 
 
 app = FastAPI(title="ModelLore API", version="0.5.0")
+
+# Logs name the event, the IDs involved, and the exception type. They never
+# include exception messages, tracebacks, file paths, dataset values, or keys.
+logger = logging.getLogger("modellore.api")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(
+        logging.Formatter("%(levelname)s:     %(name)s %(message)s")
+    )
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = PROJECT_ROOT / "configs"
@@ -94,6 +107,14 @@ def clean_filename(raw_filename: str) -> str:
         if not unicodedata.category(character).startswith("C")
     )
     return name.strip()
+
+
+def mark_job_failed(db: Session, job: TrainingJob, message: str) -> None:
+    """Record a failed training job with a message that is safe to show."""
+    job.status = "FAILED"
+    job.error_message = message
+    job.completed_at = datetime.now(timezone.utc)
+    db.commit()
 
 
 def require_api_key(
@@ -312,6 +333,11 @@ async def upload_dataset(
     except Exception as exc:
         db.rollback()
         destination.unlink(missing_ok=True)
+        logger.error(
+            "dataset upload not saved dataset_id=%s error_type=%s",
+            dataset_id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=500,
             detail="Unable to save dataset metadata",
@@ -578,6 +604,11 @@ def start_training(
             config_path = generated_config
 
         except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
+            logger.error(
+                "training config not prepared dataset_id=%s error_type=%s",
+                request.dataset_id,
+                type(exc).__name__,
+            )
             raise HTTPException(
                 status_code=500,
                 detail="Unable to prepare dataset training configuration",
@@ -617,36 +648,39 @@ def start_training(
             artifact_dir=ARTIFACT_DIR,
             lineage_dir=LINEAGE_DIR,
         )
-    except (ValueError, FileNotFoundError) as exc:
-        job.status = "FAILED"
-        job.error_message = str(exc)
-        job.completed_at = datetime.now(timezone.utc)
-        db.commit()
+    except TrainingInputError as exc:
+        # Written for the user: names their columns or config fields, nothing else.
+        message = str(exc)
+        mark_job_failed(db, job, message)
+        logger.warning(
+            "training rejected job_id=%s error_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=400, detail=message) from exc
 
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
+    except (ValueError, FileNotFoundError) as exc:
+        # Library messages can include file paths or cell values, so they stay out.
+        message = "The dataset or configuration could not be used for training"
+        mark_job_failed(db, job, message)
+        logger.warning(
+            "training rejected job_id=%s error_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=400, detail=message) from exc
 
     except Exception as exc:
-        job.status = "FAILED"
-        job.error_message = str(exc)
-        job.completed_at = datetime.now(timezone.utc)
-        db.commit()
-
-        raise HTTPException(
-            status_code=500,
-            detail="Training failed unexpectedly",
-        ) from exc
-
-
-        raise HTTPException(
-            status_code=500,
-            detail="Training failed unexpectedly",
-        ) from exc
+        message = "Training failed unexpectedly"
+        mark_job_failed(db, job, message)
+        logger.error(
+            "training failed job_id=%s error_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(status_code=500, detail=message) from exc
 
     job.mlflow_run_id = result.get("mlflow_run_id")
-    lineage_path = result.get("lineage_path")
     lineage_run_id = result.get("run_id")
     artifact_path = result.get("model_path")
     artifact_sha256 = result.get("artifact_sha256")
@@ -667,10 +701,8 @@ def start_training(
         unusable_message = (
             "Training completed but did not produce a usable model"
         )
-        job.status = "FAILED"
-        job.error_message = unusable_message
-        job.completed_at = datetime.now(timezone.utc)
-        db.commit()
+        mark_job_failed(db, job, unusable_message)
+        logger.error("training left no usable model job_id=%s", job_id)
 
         raise HTTPException(
             status_code=500,
@@ -700,6 +732,11 @@ def start_training(
         failure_message = (
             "Training completed but its database record could not be saved"
         )
+        logger.error(
+            "training result not saved job_id=%s error_type=%s",
+            job_id,
+            type(exc).__name__,
+        )
 
         try:
             failed_job = db.get(TrainingJob, job_id)
@@ -723,7 +760,6 @@ def start_training(
         "mlflow_run_id": result.get("mlflow_run_id"),
         "metrics": result.get("metrics"),
         "parameters": result.get("parameters"),
-        "lineage_path": lineage_path,
     }
 
 
@@ -835,6 +871,9 @@ def get_run(
                 detail="MLflow run not found",
             ) from exc
 
+        logger.error(
+            "mlflow run lookup failed error_type=%s", type(exc).__name__
+        )
         raise HTTPException(
             status_code=500,
             detail="Unable to retrieve MLflow run",
@@ -926,21 +965,36 @@ def make_prediction(
         )
         predictions = predict(model, feature_data)
     except ArtifactIntegrityError as exc:
+        logger.error(
+            "artifact integrity check failed model_id=%s", model_record.id
+        )
         raise HTTPException(
             status_code=500,
             detail="Model artifact failed its integrity check",
         ) from exc
     except FileNotFoundError as exc:
+        logger.error("model artifact missing model_id=%s", model_record.id)
         raise HTTPException(
             status_code=404,
             detail="Model artifact not found",
         ) from exc
     except (ValueError, TypeError) as exc:
+        # The library message can echo the offending input value, so it stays out.
+        logger.warning(
+            "prediction input rejected model_id=%s error_type=%s",
+            model_record.id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid prediction input: {exc}",
+            detail="Invalid prediction input",
         ) from exc
     except (OSError, EOFError) as exc:
+        logger.error(
+            "model artifact unreadable model_id=%s error_type=%s",
+            model_record.id,
+            type(exc).__name__,
+        )
         raise HTTPException(
             status_code=500,
             detail="Unable to load the model artifact",

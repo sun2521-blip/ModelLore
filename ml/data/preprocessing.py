@@ -6,10 +6,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+from ml.errors import TrainingInputError
+
 
 def create_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
     if X.empty or X.shape[1] == 0:
-        raise ValueError("Features must contain at least one column.")
+        raise TrainingInputError("Features must contain at least one column.")
 
     numeric_columns = X.select_dtypes(include="number").columns.tolist()
     categorical_columns = X.select_dtypes(
@@ -22,7 +24,7 @@ def create_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
     ]
 
     if unsupported_columns:
-        raise ValueError(
+        raise TrainingInputError(
             f"Unsupported feature types: {unsupported_columns}"
         )
 
