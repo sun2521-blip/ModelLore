@@ -9,6 +9,10 @@ from db.models import ModelRecord, TrainingJob
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+
+MLFLOW_RUN_ID = "0123456789abcdef0123456789abcdef"
+
+
 def test_train_iris_returns_training_results(api_client):
     lineage_run_id = str(uuid4())
 
@@ -17,7 +21,7 @@ def test_train_iris_returns_training_results(api_client):
         return_value={
             "status": "completed",
             "run_id": lineage_run_id,
-            "mlflow_run_id": "test-mlflow-id",
+            "mlflow_run_id": MLFLOW_RUN_ID,
             "metrics": {"accuracy": 0.95},
             "parameters": {"n_estimators": 50},
             "model_path": "artifacts/model.joblib",
@@ -34,7 +38,7 @@ def test_train_iris_returns_training_results(api_client):
     body = response.json()
     assert body["status"] == "completed"
     assert body["lineage_run_id"] == lineage_run_id
-    assert body["mlflow_run_id"] == "test-mlflow-id"
+    assert body["mlflow_run_id"] == MLFLOW_RUN_ID
     assert body["metrics"]["accuracy"] == 0.95
 
 
@@ -77,18 +81,18 @@ def test_train_handles_training_value_error(
 
 def test_get_run_returns_run_details(api_client):
     mock_run = MagicMock()
-    mock_run.info.run_id = "test-mlflow-id"
+    mock_run.info.run_id = MLFLOW_RUN_ID
     mock_run.info.experiment_id = "experiment-1"
     mock_run.info.status = "FINISHED"
     mock_run.data.params = {"n_estimators": "100"}
     mock_run.data.metrics = {"accuracy": 0.95}
 
     with patch("api.main.mlflow.get_run", return_value=mock_run):
-        response = api_client.get("/runs/test-mlflow-id")
+        response = api_client.get(f"/runs/{MLFLOW_RUN_ID}")
 
     assert response.status_code == 200
     body = response.json()
-    assert body["mlflow_run_id"] == "test-mlflow-id"
+    assert body["mlflow_run_id"] == MLFLOW_RUN_ID
     assert body["status"] == "FINISHED"
     assert body["metrics"]["accuracy"] == 0.95
 
@@ -101,7 +105,7 @@ def test_get_run_returns_404_when_missing(api_client):
             error_code="RESOURCE_DOES_NOT_EXIST",
         ),
     ):
-        response = api_client.get("/runs/missing-run")
+        response = api_client.get(f"/runs/{MLFLOW_RUN_ID}")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "MLflow run not found"
@@ -114,7 +118,7 @@ def test_get_run_returns_500_on_tracking_error(api_client):
             "Tracking server unavailable",
         ),
     ):
-        response = api_client.get("/runs/test-mlflow-id")
+        response = api_client.get(f"/runs/{MLFLOW_RUN_ID}")
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Unable to retrieve MLflow run"

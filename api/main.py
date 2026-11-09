@@ -5,7 +5,7 @@ import io
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 import mlflow
@@ -17,13 +17,20 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Path as PathParam,
     Query,
     UploadFile,
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from api.limits import (
+    MAX_FEATURE_VALUE_LENGTH,
+    MAX_NAME_LENGTH,
+    MAX_PREDICT_ROWS,
+    MAX_UPLOAD_COLUMNS,
+)
 from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
 from ml.inference.predict import load_model, predict
@@ -62,15 +69,39 @@ def require_api_key(
         )
 
 
+ColumnName = Annotated[
+    str, StringConstraints(min_length=1, max_length=MAX_NAME_LENGTH)
+]
+FeatureValue = (
+    float
+    | int
+    | Annotated[str, StringConstraints(max_length=MAX_FEATURE_VALUE_LENGTH)]
+    | bool
+    | None
+)
+FeatureRow = Annotated[
+    dict[ColumnName, FeatureValue],
+    Field(min_length=1, max_length=MAX_UPLOAD_COLUMNS),
+]
+MLFLOW_RUN_ID_PATTERN = r"^[0-9a-f]{32}$"
+
+
 class TrainingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     config_name: Literal["iris", "csv-test"] | None = None
     dataset_id: UUID | None = None
-    target_column: str | None = Field(default=None, min_length=1)
+    target_column: str | None = Field(
+        default=None, min_length=1, max_length=MAX_NAME_LENGTH
+    )
+
 
 class PredictionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     lineage_run_id: UUID
-    features: list[dict[str, float | int | str | bool | None]] = Field(
-        min_length=1
+    features: list[FeatureRow] = Field(
+        min_length=1, max_length=MAX_PREDICT_ROWS
     )
 
 
@@ -658,7 +689,9 @@ def get_model(
     "/runs/{mlflow_run_id}",
     dependencies=[Depends(require_api_key)],
 )
-def get_run(mlflow_run_id: str) -> dict:
+def get_run(
+    mlflow_run_id: str = PathParam(pattern=MLFLOW_RUN_ID_PATTERN),
+) -> dict:
     try:
         run = mlflow.get_run(mlflow_run_id)
     except mlflow.MlflowException as exc:
