@@ -1,6 +1,12 @@
 
+import hashlib
 import json
+import platform
 
+import pytest
+import sklearn
+
+from ml import lineage as lineage_module
 from ml.lineage import save_lineage
 
 
@@ -120,3 +126,54 @@ def test_save_lineage_records_mlflow_artifact_uri(tmp_path):
     assert saved_record["mlflow_artifact_uri"] == (
         "file:///tmp/mlruns/123/artifacts"
     )
+
+
+
+@pytest.mark.parametrize(
+    "launch_error",
+    [FileNotFoundError("git not installed"), PermissionError("[WinError 5] Access is denied")],
+)
+def test_save_lineage_survives_git_that_cannot_start(tmp_path, monkeypatch, launch_error):
+    def refuse_to_start(*args, **kwargs):
+        raise launch_error
+
+    monkeypatch.setattr(lineage_module.subprocess, "run", refuse_to_start)
+
+    record = lineage_module.save_lineage(
+        dataset_hash="dataset-hash",
+        config_hash="config-hash",
+        parameters={},
+        metrics={},
+        artifact_path="",
+        lineage_dir=tmp_path,
+    )
+
+    assert record["git_commit"] is None
+    assert record["git_dirty"] is None
+    assert (tmp_path / f"{record['run_id']}.json").is_file()
+
+
+def test_lineage_records_the_runtime_environment(tmp_path):
+    record = save_lineage(
+        dataset_hash="dataset-hash",
+        config_hash="config-hash",
+        parameters={},
+        metrics={},
+        artifact_path="",
+        lineage_dir=tmp_path,
+    )
+
+    saved = json.loads((tmp_path / f"{record['run_id']}.json").read_text(encoding="utf-8"))
+    environment = saved["environment"]
+
+    assert environment["python_version"] == platform.python_version()
+    assert environment["scikit_learn_version"] == sklearn.__version__
+    assert environment["lock_file_sha256"] == hashlib.sha256(
+        lineage_module.LOCK_FILE.read_bytes()
+    ).hexdigest()
+
+
+def test_lineage_environment_tolerates_a_missing_lock_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(lineage_module, "LOCK_FILE", tmp_path / "no-such.lock")
+
+    assert lineage_module.get_runtime_environment()["lock_file_sha256"] is None

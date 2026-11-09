@@ -1,4 +1,5 @@
 
+import hashlib
 import json
 from uuid import uuid4
 from unittest.mock import patch
@@ -39,7 +40,8 @@ def run_setup(tmp_path, monkeypatch, db_session_factory):
 
     lineage_run_id = uuid4()
     artifact_path = artifact_dir / "model.joblib"
-    artifact_path.touch()
+    artifact_path.write_bytes(b"placeholder model bytes")
+    artifact_sha256 = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
 
     record = {
         "run_id": str(lineage_run_id),
@@ -64,6 +66,7 @@ def run_setup(tmp_path, monkeypatch, db_session_factory):
             feature_columns=IRIS_COLUMNS,
             name="iris",
             artifact_path="artifacts/model.joblib",
+            artifact_sha256=artifact_sha256,
             metrics={},
         )
         db.add(model_record)
@@ -87,7 +90,7 @@ def test_predict_returns_predictions(run_setup, api_client):
     lineage_run_id, artifact_path, _, *_ = run_setup
 
     with (
-        patch("api.main.load_model", return_value=object()) as load_model,
+        patch("api.main.load_verified_model", return_value=object()) as load_model,
         patch("api.main.predict", return_value=np.array([0])) as predict,
     ):
         response = api_client.post(
@@ -104,7 +107,11 @@ def test_predict_returns_predictions(run_setup, api_client):
         "predictions": [0],
         "count": 1,
     }
-    load_model.assert_called_once_with(artifact_path.resolve())
+    load_model.assert_called_once_with(
+        artifact_path.resolve(),
+        hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
+        main.ARTIFACT_DIR,
+    )
     predict.assert_called_once()
 
 
@@ -119,7 +126,7 @@ def test_predict_supports_multiple_rows(run_setup, api_client):
     }
 
     with (
-        patch("api.main.load_model", return_value=object()),
+        patch("api.main.load_verified_model", return_value=object()),
         patch("api.main.predict", return_value=np.array([0, 1])),
     ):
         response = api_client.post(
@@ -136,7 +143,7 @@ def test_predict_supports_multiple_rows(run_setup, api_client):
 
 
 def test_predict_returns_404_for_unknown_run(run_setup, api_client):
-    with patch("api.main.load_model") as load_model:
+    with patch("api.main.load_verified_model") as load_model:
         response = api_client.post(
             "/predict",
             json={
@@ -154,7 +161,7 @@ def test_predict_returns_404_for_missing_artifact(run_setup, api_client):
     artifact_path.unlink()
 
     with patch(
-        "api.main.load_model",
+        "api.main.load_verified_model",
         side_effect=FileNotFoundError("Missing model"),
     ):
         response = api_client.post(
@@ -230,7 +237,7 @@ def test_predict_rejects_unsuccessful_training_run(
         job.status = "FAILED"
         db.commit()
 
-    with patch("api.main.load_model") as load_model:
+    with patch("api.main.load_verified_model") as load_model:
         response = api_client.post(
             "/predict",
             json={
@@ -276,7 +283,7 @@ def test_predict_rejects_artifact_outside_artifact_directory(
         model_record.artifact_path = "configs/iris.yaml"
         db.commit()
 
-    with patch("api.main.load_model") as load_model:
+    with patch("api.main.load_verified_model") as load_model:
         response = api_client.post(
             "/predict",
             json={
@@ -287,3 +294,111 @@ def test_predict_rejects_artifact_outside_artifact_directory(
 
     assert response.status_code == 500
     load_model.assert_not_called()
+
+
+def test_predict_refuses_model_without_recorded_artifact_hash(
+    run_setup,
+    api_client,
+):
+    lineage_run_id, _, _, _, db_session_factory, _, model_id = run_setup
+
+    with db_session_factory() as db:
+        model_record = db.get(main.ModelRecord, model_id)
+        model_record.artifact_sha256 = None
+        db.commit()
+
+    with patch("api.main.load_verified_model") as load_model:
+        response = api_client.post(
+            "/predict",
+            json={
+                "lineage_run_id": str(lineage_run_id),
+                "features": [IRIS_FEATURES],
+            },
+        )
+
+    assert response.status_code == 409
+    assert "retrain" in response.json()["detail"]
+    load_model.assert_not_called()
+
+
+def test_predict_refuses_tampered_artifact_without_unpickling_it(
+    run_setup,
+    api_client,
+):
+    lineage_run_id, artifact_path, *_ = run_setup
+
+    # The file changes after its hash was recorded at training time.
+    artifact_path.write_bytes(b"swapped for something else")
+
+    with patch("ml.inference.predict.joblib.load") as joblib_load:
+        response = api_client.post(
+            "/predict",
+            json={
+                "lineage_run_id": str(lineage_run_id),
+                "features": [IRIS_FEATURES],
+            },
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": "Model artifact failed its integrity check"
+    }
+    joblib_load.assert_not_called()
+
+
+def test_predict_loads_a_real_verified_artifact(run_setup, api_client):
+    import joblib
+    import pandas as pd
+    from sklearn.dummy import DummyClassifier
+
+    lineage_run_id, artifact_path, _, _, db_session_factory, _, model_id = run_setup
+
+    model = DummyClassifier(strategy="most_frequent").fit(
+        pd.DataFrame([IRIS_FEATURES] * 2, columns=IRIS_COLUMNS), [1, 1]
+    )
+    joblib.dump(model, artifact_path)
+
+    with db_session_factory() as db:
+        model_record = db.get(main.ModelRecord, model_id)
+        model_record.artifact_sha256 = hashlib.sha256(
+            artifact_path.read_bytes()
+        ).hexdigest()
+        db.commit()
+
+    response = api_client.post(
+        "/predict",
+        json={
+            "lineage_run_id": str(lineage_run_id),
+            "features": [IRIS_FEATURES],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["predictions"] == [1]
+
+
+def test_predict_hides_library_error_text(run_setup, api_client, caplog):
+    import logging
+
+    lineage_run_id, *_ = run_setup
+
+    with (
+        caplog.at_level(logging.INFO, logger="modellore.api"),
+        patch("api.main.load_verified_model", return_value=object()),
+        patch(
+            "api.main.predict",
+            side_effect=ValueError("could not convert string to float: 'secret-cell'"),
+        ),
+    ):
+        response = api_client.post(
+            "/predict",
+            json={
+                "lineage_run_id": str(lineage_run_id),
+                "features": [IRIS_FEATURES],
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid prediction input"}
+    assert "error_type=ValueError" in caplog.text
+    assert "secret-cell" not in caplog.text

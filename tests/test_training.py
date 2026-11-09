@@ -1,4 +1,5 @@
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import mlflow
 import pytest
 
 import ml.training.train as training_module
+from ml.errors import TrainingInputError
 
 
 @pytest.fixture(autouse=True)
@@ -48,11 +50,15 @@ model:
     assert result["dataset_hash"]
     assert result["config_hash"]
     assert Path(result["model_path"]).is_file()
+    assert result["artifact_sha256"] == hashlib.sha256(
+        Path(result["model_path"]).read_bytes()
+    ).hexdigest()
 
     lineage_path = Path(result["lineage_path"])
     record = json.loads(lineage_path.read_text(encoding="utf-8"))
 
     assert record["status"] == "FINISHED"
+    assert record["artifact_sha256"] == result["artifact_sha256"]
     assert record["config_snapshot"]["dataset"]["name"] == "iris"
 
     client = mlflow.tracking.MlflowClient()
@@ -149,9 +155,9 @@ def test_training_failure_records_lineage(tmp_path, monkeypatch):
 
     record = json.loads(lineage_files[0].read_text(encoding="utf-8"))
     assert record["status"] == "FAILED"
-    assert record["error"] == (
-        "ValueError: simulated training failure"
-    )
+    # An unexpected library error is recorded by type only: its message could
+    # carry file paths or dataset values.
+    assert record["error"] == "ValueError"
 
     client = mlflow.tracking.MlflowClient()
     runs = client.search_runs(
@@ -161,3 +167,38 @@ def test_training_failure_records_lineage(tmp_path, monkeypatch):
     )
     assert runs
     assert runs[0].data.tags["failure_type"] == "ValueError"
+    assert "failure_message" not in runs[0].data.tags
+    assert "failure_traceback" not in runs[0].data.tags
+
+
+def test_too_few_rows_per_class_gives_a_readable_error(tmp_path, monkeypatch):
+    mlflow.set_tracking_uri(f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}")
+    monkeypatch.chdir(tmp_path)
+
+    dataset = tmp_path / "tiny.csv"
+    # Classes b and c have a single row each: too few to split and stratify.
+    dataset.write_text(
+        "feature,target\n1,a\n2,b\n3,c\n4,a\n",
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "tiny.yaml"
+    config_path.write_text(
+        f"""
+dataset:
+  name: csv
+  path: {dataset.as_posix()}
+  target_column: target
+training:
+  random_seed: 42
+  test_size: 0.25
+model:
+  model_type: random_forest
+  task_type: classification
+  parameters:
+    n_estimators: 5
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TrainingInputError, match="stratified"):
+        training_module.train_model(config_path=str(config_path))

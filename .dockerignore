@@ -13,6 +13,16 @@ __pycache__
 modellore.db
 modellore.db-shm
 modellore.db-wal
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
+mlartifacts
+MLFlowHub-env
+*.code-workspace
+.vscode
+.idea
+*.pdf
+checkpoints.md
 mlruns
 artifacts
 data/uploads

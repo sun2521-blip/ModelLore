@@ -8,9 +8,18 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from api.main import app
+from api.rate_limit import limiter
 from db import models  # noqa: F401
 from db.base import Base
 from db.session import get_db
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Every test client shares one address, so start each test with fresh counts."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture

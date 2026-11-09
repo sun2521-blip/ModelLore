@@ -1,12 +1,19 @@
 
 import json
+import platform
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
-import subprocess
+
+import sklearn
+
+from ml.reproducibility import hash_file
 
 
 DEFAULT_LINEAGE_DIR = Path("lineage")
+# The lock file that pinned this environment; hashed into every lineage record.
+LOCK_FILE = Path(__file__).resolve().parents[1] / "uv.lock"
 
 
 def get_git_metadata() -> dict:
@@ -30,11 +37,28 @@ def get_git_metadata() -> dict:
             "git_dirty": bool(status),
         }
 
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    # Git metadata is best-effort: a missing git (Docker image) or a refused
+    # process launch (OSError covers FileNotFoundError and PermissionError)
+    # must never stop lineage from being saved.
+    except (subprocess.CalledProcessError, OSError):
         return {
             "git_commit": None,
             "git_dirty": None,
         }
+
+
+def get_runtime_environment() -> dict:
+    """Describe the environment a model was trained in."""
+    try:
+        lock_file_sha256 = hash_file(LOCK_FILE)
+    except OSError:
+        lock_file_sha256 = None
+
+    return {
+        "python_version": platform.python_version(),
+        "scikit_learn_version": sklearn.__version__,
+        "lock_file_sha256": lock_file_sha256,
+    }
 
 
 def save_lineage(
@@ -51,6 +75,7 @@ def save_lineage(
     config_path: str | None = None,
     config_snapshot: dict | None = None,
     feature_columns: list[str] | None = None,
+    artifact_sha256: str | None = None,
 ) -> dict:
     lineage_dir = Path(lineage_dir)
     lineage_dir.mkdir(parents=True, exist_ok=True)
@@ -67,8 +92,10 @@ def save_lineage(
         "parameters": parameters,
         "metrics": metrics,
         "artifact_path": artifact_path,
+        "artifact_sha256": artifact_sha256,
         "git_commit": git_metadata["git_commit"],
         "git_dirty": git_metadata["git_dirty"],
+        "environment": get_runtime_environment(),
         "status": status,
         "error": error,
         "mlflow_artifact_uri": mlflow_artifact_uri,
