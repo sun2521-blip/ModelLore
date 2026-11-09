@@ -30,7 +30,7 @@ from ml.inference.predict import load_model, predict
 from ml.training.train import train_model
 
 
-app = FastAPI(title="ModelLore API", version="0.2.0")
+app = FastAPI(title="ModelLore API", version="0.5.0")
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_DIR = PROJECT_ROOT / "configs"
