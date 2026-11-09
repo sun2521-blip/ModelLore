@@ -128,7 +128,7 @@ def test_train_rejects_unknown_dataset_id(
 
 
 def test_train_uses_custom_target_column(
-    api_client, tmp_path, monkeypatch
+    api_client, tmp_path, monkeypatch, db_session_factory
 ):
     upload_dir = tmp_path / "uploads"
     config_dir = tmp_path / "configs"
@@ -141,9 +141,22 @@ def test_train_uses_custom_target_column(
     monkeypatch.setattr(main, "LINEAGE_DIR", tmp_path / "lineage")
 
     dataset_id = UUID("12345678-1234-5678-1234-567812345678")
-    (upload_dir / f"{dataset_id}.csv").write_bytes(
-        b"feature,species\n1,cat\n2,dog\n"
-    )
+    dataset_file = upload_dir / f"{dataset_id}.csv"
+    dataset_file.write_bytes(b"feature,species\n1,cat\n2,dog\n")
+
+    with db_session_factory() as session:
+        session.add(
+            Dataset(
+                id=dataset_id,
+                name="species",
+                original_filename="species.csv",
+                file_path=str(dataset_file),
+                sha256="0" * 64,
+                row_count=2,
+                column_count=2,
+            )
+        )
+        session.commit()
 
     (config_dir / "csv-test.yaml").write_text(
         yaml.safe_dump(

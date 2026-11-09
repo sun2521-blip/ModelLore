@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import io
 import os
+import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
@@ -19,8 +21,10 @@ from fastapi import (
     HTTPException,
     Path as PathParam,
     Query,
+    Request,
     UploadFile,
 )
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -30,6 +34,7 @@ from api.limits import (
     MAX_NAME_LENGTH,
     MAX_PREDICT_ROWS,
     MAX_UPLOAD_COLUMNS,
+    MAX_UPLOAD_ROWS,
 )
 from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
@@ -45,6 +50,46 @@ ARTIFACT_DIR = (PROJECT_ROOT / "artifacts").resolve()
 LINEAGE_DIR = PROJECT_ROOT / "lineage"
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+# Room for multipart boundaries and part headers around the CSV itself.
+UPLOAD_ENVELOPE_BYTES = 64 * 1024
+
+
+@app.middleware("http")
+async def reject_oversized_uploads(request: Request, call_next):
+    """Refuse an upload by its declared size, before the body is read."""
+    if request.method == "POST" and request.url.path == "/datasets/upload":
+        declared_size = request.headers.get("content-length")
+
+        if declared_size is not None:
+            try:
+                too_large = (
+                    int(declared_size)
+                    > MAX_UPLOAD_BYTES + UPLOAD_ENVELOPE_BYTES
+                )
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Invalid Content-Length header"},
+                )
+
+            if too_large:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "CSV upload exceeds the 10 MiB limit"},
+                )
+
+    return await call_next(request)
+
+
+def clean_filename(raw_filename: str) -> str:
+    """Keep the last path segment of a client filename, minus control characters."""
+    name = re.split(r"[\\/]", raw_filename)[-1]
+    name = "".join(
+        character
+        for character in name
+        if not unicodedata.category(character).startswith("C")
+    )
+    return name.strip()
 
 
 def require_api_key(
@@ -132,11 +177,19 @@ async def upload_dataset(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict:
-    if not file.filename or Path(file.filename).suffix.lower() != ".csv":
+    filename = clean_filename(file.filename or "")
+    file_stem = Path(filename).stem
+
+    if not file_stem or Path(filename).suffix.lower() != ".csv":
         raise HTTPException(
             status_code=415,
             detail="Only CSV files are supported",
         )
+
+    # Keep the display name within the database column, extension intact.
+    if len(filename) > MAX_NAME_LENGTH:
+        file_stem = file_stem[: MAX_NAME_LENGTH - len(".csv")]
+        filename = f"{file_stem}.csv"
 
     content = await file.read(MAX_UPLOAD_BYTES + 1)
 
@@ -152,27 +205,85 @@ async def upload_dataset(
             detail="Uploaded CSV is empty",
         )
 
+    if b"\x00" in content:
+        raise HTTPException(
+            status_code=400,
+            detail="CSV must not contain NUL bytes",
+        )
 
     try:
         decoded = content.decode("utf-8-sig")
-        reader = csv.reader(io.StringIO(decoded, newline=""), strict=True)
-        header = next(reader, None)
-        row_count = sum(1 for row in reader if row)
-    except (UnicodeDecodeError, csv.Error) as exc:
+    except UnicodeDecodeError as exc:
         raise HTTPException(
             status_code=400,
             detail="CSV must be valid UTF-8",
         ) from exc
 
+    reader = csv.reader(io.StringIO(decoded, newline=""), strict=True)
 
-    if (
-        not header
-        or len(header) != len(set(header))
-        or any(not column.strip() for column in header)
-    ):
+    try:
+        header = next(reader, None)
+
+        if (
+            not header
+            or len(header) != len(set(header))
+            or any(not column.strip() for column in header)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="CSV must have unique, non-empty column headers",
+            )
+
+        if len(header) > MAX_UPLOAD_COLUMNS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"CSV has more than {MAX_UPLOAD_COLUMNS} columns",
+            )
+
+        if len(header) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="CSV needs at least two columns: features and a target",
+            )
+
+        if any(len(column) > MAX_NAME_LENGTH for column in header):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Column headers must be at most {MAX_NAME_LENGTH} characters"
+                ),
+            )
+
+        row_count = 0
+        for row in reader:
+            if not row:
+                continue
+
+            if len(row) != len(header):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Every row must have the same number of columns "
+                        "as the header"
+                    ),
+                )
+
+            row_count += 1
+            if row_count > MAX_UPLOAD_ROWS:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"CSV has more than {MAX_UPLOAD_ROWS} data rows",
+                )
+    except csv.Error as exc:
         raise HTTPException(
             status_code=400,
-            detail="CSV must have unique, non-empty column headers",
+            detail="CSV could not be parsed",
+        ) from exc
+
+    if row_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="CSV must contain at least one data row",
         )
 
     dataset_id = uuid4()
@@ -184,8 +295,8 @@ async def upload_dataset(
 
         dataset = Dataset(
             id=dataset_id,
-            name=Path(file.filename).stem,
-            original_filename=Path(file.filename).name,
+            name=file_stem,
+            original_filename=filename,
             file_path=str(destination),
             sha256=hashlib.sha256(content).hexdigest(),
             column_count=len(header),
@@ -396,6 +507,14 @@ def start_training(
     )
 
     if request.dataset_id:
+        # Only datasets the API itself registered can be trained on.
+        dataset_record = db.get(Dataset, request.dataset_id)
+        if dataset_record is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Uploaded dataset not found",
+            )
+
         dataset_path = (
             UPLOAD_DIR / f"{request.dataset_id}.csv"
         ).resolve()
@@ -411,9 +530,6 @@ def start_training(
                 status_code=404,
                 detail="Uploaded dataset not found",
             )
-
-        dataset_record = db.get(Dataset, request.dataset_id)
-
 
         template_path = CONFIG_DIR / "csv-test.yaml"
 
