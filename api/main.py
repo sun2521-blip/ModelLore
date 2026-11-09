@@ -1,7 +1,6 @@
 import csv
 import hashlib
 import io
-import json
 import os
 import secrets
 from datetime import datetime, timezone
@@ -494,33 +493,45 @@ def start_training(
             detail="Training failed unexpectedly",
         ) from exc
 
-    job.status = "FINISHED"
     job.mlflow_run_id = result.get("mlflow_run_id")
-    job.completed_at = datetime.now(timezone.utc)
-
-    artifact_path = None
     lineage_path = result.get("lineage_path")
     lineage_run_id = result.get("run_id")
+    artifact_path = result.get("model_path")
+    feature_columns = result.get("feature_columns")
 
-    if lineage_path:
-        try:
-            with Path(lineage_path).open("r", encoding="utf-8") as file:
-                lineage = json.load(file)
-            artifact_path = lineage.get("artifact_path")
-        except (OSError, json.JSONDecodeError):
-            artifact_path = None
+    try:
+        model_lineage_run_id = UUID(str(lineage_run_id))
+    except ValueError:
+        model_lineage_run_id = None
 
-    if artifact_path:
-        db.add(
-            ModelRecord(
-                training_job_id=job.id,
-                lineage_run_id=UUID(str(lineage_run_id)),
-                feature_columns=result.get("feature_columns"),
-                name=job.config_name,
-                artifact_path=str(artifact_path),
-                metrics=result.get("metrics"),
-            )
+    # A job only counts as FINISHED when it leaves a model that /predict can use.
+    if not artifact_path or model_lineage_run_id is None or not feature_columns:
+        unusable_message = (
+            "Training completed but did not produce a usable model"
         )
+        job.status = "FAILED"
+        job.error_message = unusable_message
+        job.completed_at = datetime.now(timezone.utc)
+        db.commit()
+
+        raise HTTPException(
+            status_code=500,
+            detail=unusable_message,
+        )
+
+    job.status = "FINISHED"
+    job.completed_at = datetime.now(timezone.utc)
+
+    db.add(
+        ModelRecord(
+            training_job_id=job.id,
+            lineage_run_id=model_lineage_run_id,
+            feature_columns=feature_columns,
+            name=job.config_name,
+            artifact_path=str(artifact_path),
+            metrics=result.get("metrics"),
+        )
+    )
 
 
     try:

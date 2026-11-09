@@ -163,11 +163,13 @@ def test_train_uses_custom_target_column(
     with patch(
         "api.main.train_model",
         return_value={
-            "run_id": "test-lineage-id",
+            "run_id": "87654321-4321-8765-4321-876543218765",
             "mlflow_run_id": "test-mlflow-id",
             "metrics": {},
             "parameters": {},
+            "model_path": "artifacts/model.joblib",
             "lineage_path": "lineage/test-lineage-id.json",
+            "feature_columns": ["feature"],
         },
     ) as mock_train:
         response = api_client.post(
