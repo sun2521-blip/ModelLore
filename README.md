@@ -737,4 +737,4 @@ The default application configuration uses SQLite when `DATABASE_URL` is not set
 
 ### Persistent storage
 
-Docker Compose persists PostgreSQL data in a named volume and mounts dataset uploads, model artifacts, lineage metadata, and MLflow runs from the project directory. Avoid `docker compose down -v` when you want to preserve the database volume.
+Docker Compose persists PostgreSQL data in a named volume and mounts dataset uploads, model artifacts, lineage metadata, and MLflow runs from the project directory. MLflow's run database lives at `mlruns/mlflow.db` on that mount, so run history survives rebuilds and `docker compose down`. Avoid `docker compose down -v` when you want to preserve the database volume.

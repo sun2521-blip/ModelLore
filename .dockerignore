@@ -13,6 +13,9 @@ __pycache__
 modellore.db
 modellore.db-shm
 modellore.db-wal
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
 mlruns
 artifacts
 data/uploads
