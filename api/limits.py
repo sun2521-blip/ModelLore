@@ -33,3 +33,39 @@ MAX_UPLOAD_COLUMNS = int_from_env("MODELLORE_MAX_UPLOAD_COLUMNS", 200)
 
 MAX_PREDICT_ROWS = int_from_env("MODELLORE_MAX_PREDICT_ROWS", 1_000)
 MAX_FEATURE_VALUE_LENGTH = 1_000
+
+# Requests per client IP per window, for the endpoints that do real work.
+RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMITS = {
+    "upload": int_from_env("MODELLORE_RATE_LIMIT_UPLOAD", 10),
+    "train": int_from_env("MODELLORE_RATE_LIMIT_TRAIN", 5),
+    "predict": int_from_env("MODELLORE_RATE_LIMIT_PREDICT", 60),
+}
+
+
+def cors_origins_from_env(raw: str | None) -> list[str]:
+    """Parse a comma-separated list of exact browser origins.
+
+    Empty means no cross-origin access at all. A wildcard is refused: the
+    allowlist must name each origin that may call the API from a browser.
+    """
+    origins = [
+        origin.strip().rstrip("/")
+        for origin in (raw or "").split(",")
+        if origin.strip()
+    ]
+
+    for origin in origins:
+        if origin == "*" or "*" in origin:
+            raise ValueError(
+                "MODELLORE_CORS_ORIGINS must list exact origins; wildcards are not allowed"
+            )
+        if not origin.startswith(("http://", "https://")):
+            raise ValueError(
+                f"MODELLORE_CORS_ORIGINS entries must start with http:// or https://: {origin}"
+            )
+
+    return origins
+
+
+CORS_ORIGINS = cors_origins_from_env(os.getenv("MODELLORE_CORS_ORIGINS"))

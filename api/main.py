@@ -25,18 +25,21 @@ from fastapi import (
     Request,
     UploadFile,
 )
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from api.limits import (
+    CORS_ORIGINS,
     MAX_FEATURE_VALUE_LENGTH,
     MAX_NAME_LENGTH,
     MAX_PREDICT_ROWS,
     MAX_UPLOAD_COLUMNS,
     MAX_UPLOAD_ROWS,
 )
+from api.rate_limit import rate_limit
 from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
 from ml.errors import TrainingInputError
@@ -96,6 +99,18 @@ async def reject_oversized_uploads(request: Request, call_next):
                 )
 
     return await call_next(request)
+
+
+# Browsers may call the API only from origins listed in MODELLORE_CORS_ORIGINS.
+# Empty by default, never a wildcard, and never with credentials: the API key
+# travels in a header, not a cookie.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["X-API-Key", "Content-Type"],
+)
 
 
 def clean_filename(raw_filename: str) -> str:
@@ -196,7 +211,7 @@ def database_health():
 
 @app.post(
     "/datasets/upload",
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(rate_limit("upload")), Depends(require_api_key)],
 )
 async def upload_dataset(
     file: UploadFile = File(...),
@@ -525,7 +540,10 @@ def get_training_job(
 
 
 
-@app.post("/train", dependencies=[Depends(require_api_key)])
+@app.post(
+    "/train",
+    dependencies=[Depends(rate_limit("train")), Depends(require_api_key)],
+)
 def start_training(
     request: TrainingRequest,
     db: Session = Depends(get_db),
@@ -888,7 +906,10 @@ def get_run(
     }
 
 
-@app.post("/predict", dependencies=[Depends(require_api_key)])
+@app.post(
+    "/predict",
+    dependencies=[Depends(rate_limit("predict")), Depends(require_api_key)],
+)
 def make_prediction(
     request: PredictionRequest,
     db: Session = Depends(get_db),
