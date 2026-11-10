@@ -44,6 +44,8 @@ For now, the focus is on getting the training engine and API foundations right.
 
 - **FastAPI backend:** Expose endpoints for health checks, CSV uploads, training, MLflow run retrieval, and predictions.
 
+- **The console:** A browser front end, served by the API itself, for inserting datasets, recording training runs, playing back their metrics, taking a model apart into its lineage, and making predictions.
+
 - **API-key authentication:** Protect API endpoints using an environment-configured API key.
 
 - **Automated testing:** Test important parts of the project instead of relying on the classic "it worked on my machine" philosophy.
@@ -153,6 +155,8 @@ The bigger plan is to connect these pieces to a proper backend and eventually gi
 | FastAPI | API backend |
 | Pydantic | Request validation |
 | pytest | Automated testing |
+| React, Vite, and TypeScript | The browser console |
+| Vitest | Console tests |
 | uv | Python environment and dependency management |
 | Git and GitHub Actions | Version control and CI |
 
@@ -164,6 +168,7 @@ The bigger plan is to connect these pieces to a proper backend and eventually gi
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Node.js](https://nodejs.org/) 24+ with npm (to build or work on the console)
 - Docker Desktop (for the containerized setup)
 
 ### 1. Clone the repository
@@ -233,6 +238,14 @@ Open the interactive API documentation at http://127.0.0.1:8000/docs.
 uv run pytest
 ```
 
+The console has its own tests:
+
+```bash
+cd frontend
+npm ci
+npm test
+```
+
 ### 7. Train your first model from the command line
 
 The default configuration uses the Iris dataset.
@@ -270,6 +283,65 @@ python -m venv .venv
 ```
 
 On Windows, use `.venv\Scripts\python -m pip install -r requirements.txt`. This skips the test tools, so use `uv sync` if you want to run the tests.
+
+The console keeps its own lock: `frontend/package.json` lists its packages with exact versions, and `frontend/package-lock.json` pins everything underneath. Install with `npm ci` so the lock is followed exactly. CI builds and tests the console and runs `npm audit` on it.
+
+---
+
+## Open the console
+
+Curl commands are honest, but they don't make it easy to see a model's story at a glance. So ModelLore also has a console: a small browser front end that works like the control panel of a lineage recorder. You insert a dataset, press record, play back the runs, and take a finished model apart to see what it was made of.
+
+The API serves the console itself, from the same address, so the browser never has to talk to another origin.
+
+### Build it once
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+Then start the API as in [Getting started](#5-run-the-api) and open http://127.0.0.1:8000/. Rebuild after pulling changes to the console. Until the console is built, `/` answers with a note saying so; the API itself works either way.
+
+### What's on the panel
+
+- **00 Access:** paste your `MLFLOWHUB_API_KEY`. The console checks it against the API before keeping it. It stays in the page's memory, and in the tab's session storage only if you tick "Keep for this tab"; it is never saved anywhere longer-lived.
+
+- **01 Insert dataset:** drop a CSV, or choose one. The API validates and fingerprints it, and the console reads the header row so you can pick the target column.
+
+- **02 Record:** train on Iris or on an inserted dataset. The counter runs while the model trains.
+
+- **03 Playback:** every training run becomes a bar, as tall as its accuracy. Move the orange playhead with a click or the arrow keys to read out that run's metrics, parameters, and MLflow run.
+
+- **04 Trace:** an exploded drawing of the selected model's lineage, from the dataset at the base, through its configuration and training run, up to the model artifact, with each layer's fingerprint.
+
+- **05 Play:** fill in a row of features and press play to get a prediction from the selected model.
+
+### Working on the console
+
+Run the API on port 8000 as usual, and start Vite's development server in a second terminal:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://127.0.0.1:5173. Vite forwards API calls to `http://127.0.0.1:8000`, so the browser still sees a single origin and CORS can stay closed. If port 8000 is busy (a Docker stack, say), run the API on another port and point Vite at it with `MODELLORE_API_URL`:
+
+Git Bash
+
+```bash
+MODELLORE_API_URL=http://127.0.0.1:8001 npm run dev
+```
+
+PowerShell
+
+```powershell
+$env:MODELLORE_API_URL = "http://127.0.0.1:8001"
+npm run dev
+```
 
 ## Verify a training run
 
@@ -491,6 +563,19 @@ Replace the lineage ID and feature names/values with those for your trained mode
 
 For the exact request schemas and response shapes, visit [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
+### 8. Trace a model
+
+Use the same `lineage_run_id` to take the model apart:
+
+```bash
+curl "http://127.0.0.1:8000/lineage/LINEAGE_RUN_ID" \
+  -H "X-API-Key: $MLFLOWHUB_API_KEY"
+```
+
+The response follows the model's lineage from the bottom up: the dataset (its fingerprint, and the uploaded file it came from), the configuration (its fingerprint and settings), the training run (metrics, MLflow run, and git commit), and the model artifact (its SHA-256 and the Python, scikit-learn, and `uv.lock` it was trained with). Server file paths stay on the server.
+
+`GET /runs/MLFLOW_RUN_ID` also returns the run's `dataset_hash`, `config_hash`, and `lineage_run_id` tags, so an MLflow run can be traced back the same way.
+
 ### Older models
 
 `/predict` finds a model by its `lineage_run_id`, checks each row against the model's saved `feature_columns`, and verifies the artifact's recorded SHA-256 before loading it. Models registered by earlier versions were saved without some of these fields, so the current prediction flow can't use them:
@@ -555,7 +640,9 @@ ModelLore aims for a sensible baseline for a project that runs on your own machi
 
 - **Network:** CORS is off unless you list exact origins. Uploads, training, and predictions are rate limited. In Docker Compose, PostgreSQL and the API listen on `127.0.0.1` only, there is no default database password, and the API container runs as an unprivileged user.
 
-- **Dependencies:** every package is pinned with a hash in `uv.lock` and `requirements.txt`, and the set was checked with `pip-audit` for v0.5.0 with no known vulnerabilities found.
+- **The console:** it is served from the API's own origin, so CORS can stay off. Its pages carry a strict content security policy: scripts, styles, fonts, and API calls may only come from that same origin, and the page can't be framed by another site. The API key is sent only in the `X-API-Key` header, kept in the page's memory, and never written to long-lived browser storage.
+
+- **Dependencies:** every package is pinned with a hash in `uv.lock` and `requirements.txt`, and the set was checked with `pip-audit` for v0.5.0 with no known vulnerabilities found. The console's packages are pinned in `frontend/package-lock.json` and checked with `npm audit` in CI.
 
 ### What is not covered
 
@@ -570,6 +657,8 @@ ModelLore aims for a sensible baseline for a project that runs on your own machi
 - **Uploads are checked after they arrive:** an upload that declares its size is refused straight away if it's too big, but one sent without a declared size is received in full before it is refused.
 
 - **Unexpected errors:** an error the API doesn't handle at all still returns a plain `500` to the client, but Uvicorn writes its traceback to the server log.
+
+- **The console trusts its browser:** while the page is open, the key sits in its memory, and in the tab's session storage if you ask it to. Anything that can run code in that page, such as a malicious browser extension, could read it.
 
 - **No audit trail** of who called which endpoint, and no automated secret rotation.
 
@@ -645,7 +734,7 @@ curl -H "X-API-Key: your-api-key" \
   "http://localhost:8000/jobs?limit=20&offset=0"
 ```
 
-Job records expose available metadata such as job status, metrics, errors, and timestamps.
+Job records expose available metadata such as job status, metrics, errors, and timestamps, plus the `model_id` and `lineage_run_id` of the model a finished job produced.
 
 Retrieve a specific job:
 
@@ -675,7 +764,7 @@ curl -H "X-API-Key: your-api-key" \
   "http://localhost:8000/models/YOUR_MODEL_ID"
 ```
 
-Model records include available model metadata and related training-job information. Artifact filesystem paths are not exposed by these management responses.
+Model records include available model metadata and related training-job information, along with what you need to use and trace the model: its `lineage_run_id`, the `feature_columns` it expects, the `dataset_id` it was trained on, and its `artifact_sha256`. Artifact filesystem paths are not exposed by these management responses.
 
 ### Error Responses
 
@@ -777,6 +866,8 @@ docker compose up -d --build
 ```
 
 Use letters and digits for `POSTGRES_PASSWORD`; it is placed inside the database URL, where characters such as `@`, `:` and `/` would break it.
+
+The image builds the console as part of `docker compose up --build`, so there is nothing to install for it. Once the services are up, open http://localhost:8000/ for the console, or http://localhost:8000/docs for the API reference.
 
 The API container runs Alembic migrations before starting Uvicorn. PostgreSQL must become healthy before the API starts. Both services listen on `127.0.0.1` only, so they are reachable from your own machine but not from the rest of the network.
 
