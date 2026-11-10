@@ -2,9 +2,11 @@ import { serial } from "../lib/format";
 
 type FooterProps = {
   version: string | null;
+  /** Training runs recorded so far, once the console is connected. */
+  runCount: number | null;
 };
 
-export function Footer({ version }: FooterProps) {
+export function Footer({ version, runCount }: FooterProps) {
   return (
     <footer className="bottombar">
       <div className="bottombar__spec label">
@@ -31,7 +33,9 @@ export function Footer({ version }: FooterProps) {
         <span>Trace a model</span>
       </a>
 
-      <p className="bottombar__serial label mono">{serial(null, 12)}</p>
+      <p className="bottombar__serial label mono" title="Training runs recorded">
+        <span className="bottombar__serial-label">Runs</span> {serial(runCount, 12)}
+      </p>
     </footer>
   );
 }

@@ -3,8 +3,12 @@ import { useEffect } from "react";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { HudFrame } from "./components/HudFrame";
+import { Finale, Marquee } from "./components/Story";
 import { Wordmark } from "./components/Wordmark";
+import { Console } from "./components/console/Console";
+import { useApiKey } from "./hooks/useApiKey";
 import { useApiStatus } from "./hooks/useApiStatus";
+import { useConsoleData } from "./hooks/useConsoleData";
 
 const HERO_NOTES = [
   { position: "nw", title: "Dataset fingerprint", detail: "SHA-256 of every upload" },
@@ -13,41 +17,10 @@ const HERO_NOTES = [
   { position: "se", title: "Artifact check", detail: "Hash verified before every load" },
 ] as const;
 
-const MODULES = [
-  {
-    index: "01",
-    name: "Insert dataset",
-    detail: "Upload a CSV. ModelLore checks it, fingerprints it, and keeps it for training.",
-    endpoint: "POST /datasets/upload",
-  },
-  {
-    index: "02",
-    name: "Record",
-    detail: "Train on Iris or on your dataset. The counter runs while the model trains.",
-    endpoint: "POST /train",
-  },
-  {
-    index: "03",
-    name: "Playback",
-    detail: "Every run becomes a bar. The playhead picks one and reads out its metrics.",
-    endpoint: "GET /jobs · /models · /runs",
-  },
-  {
-    index: "04",
-    name: "Trace",
-    detail: "Take a model apart: dataset, configuration, run, and artifact, with their fingerprints.",
-    endpoint: "GET /lineage",
-  },
-  {
-    index: "05",
-    name: "Play",
-    detail: "Send feature rows to a trained model and read back its predictions.",
-    endpoint: "POST /predict",
-  },
-];
-
 export function App() {
   const { status, version } = useApiStatus();
+  const { apiKey, setApiKey } = useApiKey();
+  const data = useConsoleData(apiKey);
 
   // The browser looks for a #section before React has drawn it, so honour
   // links like /#console once the page exists.
@@ -76,6 +49,9 @@ export function App() {
             A configuration-driven training and lineage platform for tabular classification. Upload a
             dataset, train a model, and trace it back to the data and configuration that made it.
           </p>
+          <a className="button button--signal label hero__cta" href="#console">
+            Open the console
+          </a>
 
           {HERO_NOTES.map((note) => (
             <p key={note.position} className={`hero__note hero__note--${note.position} label`}>
@@ -87,6 +63,8 @@ export function App() {
           ))}
         </section>
 
+        <Marquee />
+
         <section className="console" id="console" aria-labelledby="console-title">
           <div className="section-rule">
             <span className="section-rule__flare" aria-hidden="true" />
@@ -96,23 +74,13 @@ export function App() {
             <span className="section-rule__flare section-rule__flare--end" aria-hidden="true" />
           </div>
 
-          <div className="module-grid">
-            {MODULES.map((module) => (
-              <article key={module.index} className="panel">
-                <header className="panel__head">
-                  <span className="mono panel__index">{module.index}</span>
-                  <h3 className="label panel__name">{module.name}</h3>
-                  <span className="label panel__state">Next step</span>
-                </header>
-                <p className="panel__detail">{module.detail}</p>
-                <p className="mono panel__endpoint">{module.endpoint}</p>
-              </article>
-            ))}
-          </div>
+          <Console status={status} apiKey={apiKey} onKey={setApiKey} data={data} />
         </section>
+
+        <Finale />
       </main>
 
-      <Footer version={version} />
+      <Footer version={version} runCount={apiKey ? data.jobs.length : null} />
     </div>
   );
 }
