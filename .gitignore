@@ -49,6 +49,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
 # ModelLore application database
 modellore.db
 modellore.db-shm

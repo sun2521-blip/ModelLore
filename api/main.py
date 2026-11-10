@@ -2,6 +2,7 @@ import csv
 import hashlib
 import hmac
 import io
+import json
 import logging
 import os
 import re
@@ -39,6 +40,8 @@ from api.limits import (
     MAX_UPLOAD_COLUMNS,
     MAX_UPLOAD_ROWS,
 )
+from api.console_ui import router as console_router
+from api.lineage_view import MAX_LINEAGE_BYTES, public_lineage
 from api.rate_limit import rate_limit
 from db.models import Dataset, ModelRecord, TrainingJob
 from db.session import engine, get_db
@@ -113,6 +116,10 @@ app.add_middleware(
 )
 
 
+# The built console, served from this origin at / (see api/console_ui.py).
+app.include_router(console_router)
+
+
 def clean_filename(raw_filename: str) -> str:
     """Keep the last path segment of a client filename, minus control characters."""
     name = re.split(r"[\\/]", raw_filename)[-1]
@@ -130,6 +137,30 @@ def mark_job_failed(db: Session, job: TrainingJob, message: str) -> None:
     job.error_message = message
     job.completed_at = datetime.now(timezone.utc)
     db.commit()
+
+
+def model_trace_fields(model: ModelRecord) -> dict:
+    """The fields that link a model to its lineage, dataset, and inputs."""
+    job = model.training_job
+    return {
+        "lineage_run_id": (
+            str(model.lineage_run_id) if model.lineage_run_id else None
+        ),
+        "dataset_id": str(job.dataset_id) if job and job.dataset_id else None,
+        "feature_columns": model.feature_columns,
+        "artifact_sha256": model.artifact_sha256,
+    }
+
+
+def job_model_fields(job: TrainingJob) -> dict:
+    """The model a job produced, if any, so a run can be traced and used."""
+    model = job.model
+    return {
+        "model_id": str(model.id) if model else None,
+        "lineage_run_id": (
+            str(model.lineage_run_id) if model and model.lineage_run_id else None
+        ),
+    }
 
 
 def require_api_key(
@@ -169,6 +200,8 @@ FeatureRow = Annotated[
     Field(min_length=1, max_length=MAX_UPLOAD_COLUMNS),
 ]
 MLFLOW_RUN_ID_PATTERN = r"^[0-9a-f]{32}$"
+# The only MLflow tags /runs returns: the ones that tie a run to its lineage.
+RUN_TRACE_TAGS = ("dataset_hash", "config_hash", "lineage_run_id")
 
 
 class TrainingRequest(BaseModel):
@@ -479,6 +512,7 @@ def list_training_jobs(
                 "status": job.status,
                 "mlflow_run_id": job.mlflow_run_id,
                 "metrics": job.model.metrics if job.model else None,
+                **job_model_fields(job),
                 "error_message": job.error_message,
                 "created_at": (
                     job.created_at.isoformat()
@@ -525,6 +559,7 @@ def get_training_job(
         "status": job.status,
         "mlflow_run_id": job.mlflow_run_id,
         "metrics": job.model.metrics if job.model else None,
+        **job_model_fields(job),
         "error_message": job.error_message,
         "created_at": (
             job.created_at.isoformat() if job.created_at else None
@@ -813,6 +848,7 @@ def list_models(
                 "name": model.name,
                 "version": model.version,
                 "metrics": model.metrics,
+                **model_trace_fields(model),
                 "created_at": (
                     model.created_at.isoformat()
                     if model.created_at
@@ -852,6 +888,7 @@ def get_model(
         "name": model.name,
         "version": model.version,
         "metrics": model.metrics,
+        **model_trace_fields(model),
         "created_at": (
             model.created_at.isoformat()
             if model.created_at
@@ -897,13 +934,69 @@ def get_run(
             detail="Unable to retrieve MLflow run",
         ) from exc
 
+    run_tags = run.data.tags if isinstance(run.data.tags, dict) else {}
+    trace_tags = {
+        key: run_tags[key]
+        for key in RUN_TRACE_TAGS
+        if isinstance(run_tags.get(key), str)
+    }
+
     return {
         "mlflow_run_id": run.info.run_id,
         "experiment_id": run.info.experiment_id,
         "status": run.info.status,
         "parameters": run.data.params,
         "metrics": run.data.metrics,
+        "tags": trace_tags,
     }
+
+
+@app.get(
+    "/lineage/{lineage_run_id}",
+    dependencies=[Depends(require_api_key)],
+)
+def get_lineage(
+    lineage_run_id: UUID,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Trace one training run: dataset, configuration, run, and model artifact."""
+    lineage_dir = LINEAGE_DIR.resolve()
+    record_path = (lineage_dir / f"{lineage_run_id}.json").resolve()
+
+    if not record_path.is_relative_to(lineage_dir) or not record_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Lineage record not found",
+        )
+
+    try:
+        if record_path.stat().st_size > MAX_LINEAGE_BYTES:
+            raise ValueError("Lineage record is too large")
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        if not isinstance(record, dict) or record.get("run_id") != str(lineage_run_id):
+            raise ValueError("Lineage record does not match its run ID")
+    except (OSError, ValueError) as exc:
+        logger.error(
+            "lineage record unreadable lineage_run_id=%s error_type=%s",
+            lineage_run_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Lineage record could not be read",
+        ) from exc
+
+    model = (
+        db.query(ModelRecord)
+        .filter(ModelRecord.lineage_run_id == lineage_run_id)
+        .first()
+    )
+    job = model.training_job if model else None
+    dataset = (
+        db.get(Dataset, job.dataset_id) if job and job.dataset_id else None
+    )
+
+    return public_lineage(record, model=model, job=job, dataset=dataset)
 
 
 @app.post(
