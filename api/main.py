@@ -40,6 +40,7 @@ from api.limits import (
     MAX_UPLOAD_COLUMNS,
     MAX_UPLOAD_ROWS,
 )
+from api.console_ui import router as console_router
 from api.lineage_view import MAX_LINEAGE_BYTES, public_lineage
 from api.rate_limit import rate_limit
 from db.models import Dataset, ModelRecord, TrainingJob
@@ -113,6 +114,10 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["X-API-Key", "Content-Type"],
 )
+
+
+# The built console, served from this origin at / (see api/console_ui.py).
+app.include_router(console_router)
 
 
 def clean_filename(raw_filename: str) -> str:

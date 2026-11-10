@@ -33,5 +33,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    // Ship every asset (fonts included) as a file, never as a data: URI, so the
+    // console's content security policy can keep font-src to 'self'.
+    assetsInlineLimit: 0,
   },
 });
