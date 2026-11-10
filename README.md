@@ -343,6 +343,48 @@ $env:MODELLORE_API_URL = "http://127.0.0.1:8001"
 npm run dev
 ```
 
+## Deploy it
+
+The hosted demo runs in two halves. The API lives on [Render](https://render.com) as a free web service built from the `Dockerfile`, and the console lives on [Vercel](https://vercel.com) as a static site. Vercel forwards every API request to Render, so the browser only ever talks to one address and CORS can stay closed.
+
+### What the free demo trades away
+
+- **It forgets.** Render's free web services have no persistent disk, so the demo keeps its SQLite database and its files on the instance itself. Everything resets together whenever Render restarts, redeploys, or wakes the service after 15 quiet minutes. That keeps the demo consistent, just empty after a nap.
+- **It naps.** The first request after a nap can take about a minute while Render wakes the service. The console says so and reconnects on its own.
+- **It is shared.** The demo key is shown on the page, so anyone can upload, train, and predict. The limits in `render.yaml` are much smaller than the defaults (1 MiB uploads, 5,000 rows), and the rate limits are shared by every visitor, because they all arrive through the same proxies. Don't upload anything private to it.
+
+For data that survives restarts, move the service to a paid plan with a [persistent disk](https://render.com/docs/disks) and point `DATABASE_URL` at a PostgreSQL database instead.
+
+### 1. The API on Render
+
+In the Render dashboard, choose **New** > **Blueprint** and pick this repository. Render reads `render.yaml` and creates a free web service called `modellore-api`.
+
+When Render asks for `MLFLOWHUB_API_KEY`, enter the key the demo will use. It will be public, so make it a value you use nowhere else. Render keeps it as a secret; it is never written into the repository.
+
+Render builds the image, runs the migrations, and deploys. After that, it redeploys on its own whenever a commit on `main` passes CI. Check that it is up:
+
+```bash
+curl https://modellore-api.onrender.com/health
+```
+
+If Render gives the service a different address, replace `modellore-api.onrender.com` in `frontend/vercel.json` with it.
+
+### 2. The console on Vercel
+
+In Vercel, import this repository and set **Root Directory** to `frontend`. Vercel reads `frontend/vercel.json`, which builds the console with Vite and forwards the API paths to Render.
+
+Add one environment variable before the first deploy:
+
+| Variable | Value |
+|---|---|
+| `VITE_DEMO_KEY` | the same key you gave Render |
+
+With it set, the console shows the key with a "Use demo key" button and a note about what a shared demo means. Leave it unset for a console that only you can use with your own key.
+
+Deploy, then open the address Vercel gives you.
+
+---
+
 ## Verify a training run
 
 ModelLore can verify a completed training run by loading its lineage record, rerunning training with the saved configuration, and comparing the results.
@@ -588,7 +630,7 @@ Retrain affected models with `POST /train`; the new model is saved with all thre
 
 ### API behavior and current limits
 
-- `GET /health` is public; protected endpoints require `X-API-Key`.
+- `GET /health` and `GET /limits` are public; protected endpoints require `X-API-Key`. `/limits` reports the limits below as this server has them set.
 
 - If `MLFLOWHUB_API_KEY` is unset or blank, protected requests fail closed.
 
@@ -608,6 +650,7 @@ These limits can be changed with environment variables:
 
 | Variable | Default |
 |---|---|
+| `MODELLORE_MAX_UPLOAD_MB` | 10 |
 | `MODELLORE_MAX_UPLOAD_ROWS` | 100000 |
 | `MODELLORE_MAX_UPLOAD_COLUMNS` | 200 |
 | `MODELLORE_MAX_PREDICT_ROWS` | 1000 |
