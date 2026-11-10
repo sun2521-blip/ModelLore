@@ -105,7 +105,7 @@ export function PlayPanel({ apiKey, job, model }: PlayPanelProps) {
             >
               Add row
             </button>
-            <button className="button button--signal label" type="submit" disabled={playing}>
+            <button className="button button--primary label" type="submit" disabled={playing} data-live={playing}>
               <span className="play__triangle" aria-hidden="true" />
               {playing ? "Playing" : "Play"}
             </button>

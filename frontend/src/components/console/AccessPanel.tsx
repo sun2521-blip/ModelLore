@@ -71,7 +71,7 @@ export function AccessPanel({ onConnect }: AccessPanelProps) {
           Keep for this tab
         </label>
 
-        <button className="button button--signal label" type="submit" disabled={checking}>
+        <button className="button button--primary label" type="submit" disabled={checking} data-live={checking}>
           {checking ? "Checking" : "Connect"}
         </button>
       </form>

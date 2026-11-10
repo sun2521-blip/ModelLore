@@ -147,7 +147,12 @@ export function RecordPanel({ apiKey, datasets, knownColumns, preferredDatasetId
         )}
 
         <div className="record__deck">
-          <button className="button button--signal record__button label" type="submit" disabled={recording}>
+          <button
+            className="button button--primary record__button label"
+            type="submit"
+            disabled={recording}
+            data-live={recording}
+          >
             <span className="rec-dot" data-live={recording} aria-hidden="true" />
             {recording ? "Recording" : "Record"}
           </button>

@@ -24,7 +24,7 @@ export function Footer({ version, runCount }: FooterProps) {
         <svg className="bottombar__tab-shape" viewBox="0 0 240 48" preserveAspectRatio="none" aria-hidden="true">
           <path
             d="M0 47.25 L16 7 Q19 0.75 27 0.75 L213 0.75 Q221 0.75 224 7 L240 47.25"
-            fill="var(--signal)"
+            fill="var(--ink)"
             stroke="var(--ink)"
             strokeWidth={1.5}
             vectorEffect="non-scaling-stroke"

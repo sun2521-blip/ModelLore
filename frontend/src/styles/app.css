@@ -368,7 +368,7 @@ main {
   padding: 16px 20px 20px;
   border: var(--line) solid var(--ink);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--sage-light) 55%, transparent);
+  background: none;
   scroll-margin-top: 96px;
 }
 
@@ -434,13 +434,21 @@ main {
   opacity: 0.7;
 }
 
-.button--signal {
-  background: var(--signal);
+/* The main action: ink at rest, orange only while it is actually running. */
+.button--primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--sage);
 }
 
-.button--signal:hover:not(:disabled) {
-  background: var(--ink);
-  color: var(--signal);
+.button--primary:hover:not(:disabled) {
+  background: var(--ink-soft);
+}
+
+.button--primary[data-live="true"] {
+  background: var(--signal);
+  color: var(--ink);
+  opacity: 1;
 }
 
 .button--ink {
@@ -454,7 +462,8 @@ main {
 }
 
 .button--quiet:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  background: var(--ink);
+  color: var(--sage);
 }
 
 .field {
@@ -469,7 +478,7 @@ main {
   padding: 6px 12px;
   border: var(--line) solid var(--ink);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--sage) 70%, white 12%);
+  background: none;
 }
 
 .field--compact .field__input {
@@ -498,7 +507,7 @@ main {
 .notice--error {
   border-style: solid;
   border-color: var(--signal);
-  box-shadow: inset 4px 0 0 var(--signal);
+  border-left-width: 5px;
 }
 
 /* 00 Access */
@@ -531,7 +540,8 @@ main {
 
 .slot:hover,
 .slot[data-dragging="true"] {
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  background: var(--sage-light);
+  border-style: solid;
 }
 
 .slot:focus-within {
@@ -662,6 +672,10 @@ main {
 }
 
 .record__button .rec-dot {
+  border-color: var(--sage);
+}
+
+.record__button .rec-dot[data-live="true"] {
   border-color: var(--ink);
   background: var(--ink);
 }
@@ -687,8 +701,8 @@ main {
       to right,
       transparent 0,
       transparent calc(2.4% - 1px),
-      color-mix(in srgb, var(--ink) 55%, transparent) calc(2.4% - 1px),
-      color-mix(in srgb, var(--ink) 55%, transparent) 2.4%
+      var(--olive-deep) calc(2.4% - 1px),
+      var(--olive-deep) 2.4%
     );
 }
 
@@ -723,8 +737,8 @@ main {
 }
 
 .tape__slot[data-status="FAILED"] .tape__bar {
-  background: repeating-linear-gradient(45deg, var(--ink) 0 3px, transparent 3px 6px);
-  box-shadow: 0 0 0 var(--line) var(--ink);
+  background: repeating-linear-gradient(45deg, var(--ink) 0 3px, var(--sage) 3px 6px);
+  border: var(--line) solid var(--ink);
 }
 
 .tape__slot:hover .tape__bar {
@@ -970,7 +984,8 @@ main {
   padding: 12px 14px;
   border: var(--line) solid var(--ink);
   border-radius: 8px;
-  background: var(--signal);
+  background: var(--ink);
+  color: var(--sage);
 }
 
 .predictions__value {
@@ -1106,6 +1121,7 @@ main {
 
 .bottombar__tab span {
   position: relative;
+  color: var(--sage);
 }
 
 .bottombar__tab-shape {
@@ -1117,7 +1133,7 @@ main {
 }
 
 .bottombar__tab:hover .bottombar__tab-shape path {
-  fill: var(--ink);
+  fill: var(--ink-soft);
 }
 
 .bottombar__tab:hover span {

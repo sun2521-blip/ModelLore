@@ -49,7 +49,7 @@ export function App() {
             A configuration-driven training and lineage platform for tabular classification. Upload a
             dataset, train a model, and trace it back to the data and configuration that made it.
           </p>
-          <a className="button button--signal label hero__cta" href="#console">
+          <a className="button button--primary label hero__cta" href="#console">
             Open the console
           </a>
 
