@@ -34,6 +34,8 @@ from sqlalchemy.orm import Session
 
 from api.limits import (
     CORS_ORIGINS,
+    MAX_UPLOAD_MB,
+    RATE_LIMITS,
     MAX_FEATURE_VALUE_LENGTH,
     MAX_NAME_LENGTH,
     MAX_PREDICT_ROWS,
@@ -72,7 +74,8 @@ CONFIG_DIR = PROJECT_ROOT / "configs"
 ARTIFACT_DIR = (PROJECT_ROOT / "artifacts").resolve()
 LINEAGE_DIR = PROJECT_ROOT / "lineage"
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
+UPLOAD_TOO_LARGE = f"CSV upload exceeds the {MAX_UPLOAD_MB} MiB limit"
 # Room for multipart boundaries and part headers around the CSV itself.
 UPLOAD_ENVELOPE_BYTES = 64 * 1024
 
@@ -98,7 +101,7 @@ async def reject_oversized_uploads(request: Request, call_next):
             if too_large:
                 return JSONResponse(
                     status_code=413,
-                    content={"detail": "CSV upload exceeds the 10 MiB limit"},
+                    content={"detail": UPLOAD_TOO_LARGE},
                 )
 
     return await call_next(request)
@@ -228,6 +231,18 @@ def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
+@app.get("/limits")
+def server_limits() -> dict:
+    """The limits this server enforces, so clients can tell people before they hit them."""
+    return {
+        "max_upload_mb": MAX_UPLOAD_MB,
+        "max_upload_rows": MAX_UPLOAD_ROWS,
+        "max_upload_columns": MAX_UPLOAD_COLUMNS,
+        "max_predict_rows": MAX_PREDICT_ROWS,
+        "rate_limits_per_minute": dict(RATE_LIMITS),
+    }
+
+
 @app.get("/health/database")
 def database_health():
     """Check whether the configured application database is reachable."""
@@ -269,7 +284,7 @@ async def upload_dataset(
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
-            detail="CSV upload exceeds the 10 MiB limit",
+            detail=UPLOAD_TOO_LARGE,
         )
 
     if not content:

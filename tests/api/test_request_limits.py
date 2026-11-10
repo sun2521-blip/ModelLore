@@ -114,3 +114,27 @@ def test_int_from_env_rejects_bad_values(monkeypatch, bad_value):
 
     with pytest.raises(ValueError):
         limits.int_from_env("MODELLORE_TEST_LIMIT", 7)
+
+
+def test_limits_are_public_and_match_the_server(api_client):
+    from api import main
+
+    api_client.headers.pop("X-API-Key")
+
+    response = api_client.get("/limits")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "max_upload_mb": limits.MAX_UPLOAD_MB,
+        "max_upload_rows": main.MAX_UPLOAD_ROWS,
+        "max_upload_columns": main.MAX_UPLOAD_COLUMNS,
+        "max_predict_rows": limits.MAX_PREDICT_ROWS,
+        "rate_limits_per_minute": limits.RATE_LIMITS,
+    }
+
+
+def test_upload_size_follows_the_configured_megabytes():
+    from api import main
+
+    assert main.MAX_UPLOAD_BYTES == limits.MAX_UPLOAD_MB * 1024 * 1024
+    assert f"{limits.MAX_UPLOAD_MB} MiB" in main.UPLOAD_TOO_LARGE

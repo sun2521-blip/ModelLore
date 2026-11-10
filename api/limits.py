@@ -28,6 +28,7 @@ def int_from_env(name: str, default: int) -> int:
 # Names (CSV headers, feature names, target column) share the database column size.
 MAX_NAME_LENGTH = 255
 
+MAX_UPLOAD_MB = int_from_env("MODELLORE_MAX_UPLOAD_MB", 10)
 MAX_UPLOAD_ROWS = int_from_env("MODELLORE_MAX_UPLOAD_ROWS", 100_000)
 MAX_UPLOAD_COLUMNS = int_from_env("MODELLORE_MAX_UPLOAD_COLUMNS", 200)
 
