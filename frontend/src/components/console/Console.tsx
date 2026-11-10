@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { ApiStatus, TrainResult, UploadResult } from "../../lib/api";
 import type { ConsoleDataState } from "../../hooks/useConsoleData";
+import { DEMO_KEY, DEMO_NOTICE, DEMO_WAKING } from "../../lib/demo";
 import { chronological } from "../../lib/runs";
 import { AccessPanel } from "./AccessPanel";
 import { PlayPanel } from "./PlayPanel";
@@ -74,25 +75,37 @@ export function Console({ status, apiKey, onKey, data }: ConsoleProps) {
     [reload],
   );
 
+  const demoNotice = DEMO_KEY ? <p className="notice demo-notice">{DEMO_NOTICE}</p> : null;
+
   if (status === "offline") {
     return (
       <p className="notice notice--error console__offline" role="status">
-        The API is not answering. Start it with <span className="mono">uv run uvicorn api.main:app</span>, then this
-        page reconnects on its own.
+        {DEMO_KEY ? (
+          DEMO_WAKING
+        ) : (
+          <>
+            The API is not answering. Start it with <span className="mono">uv run uvicorn api.main:app</span>, then
+            this page reconnects on its own.
+          </>
+        )}
       </p>
     );
   }
 
   if (!apiKey) {
     return (
-      <div className="module-grid">
-        <AccessPanel onConnect={(key, keep) => onKey(key, keep)} />
-      </div>
+      <>
+        {demoNotice}
+        <div className="module-grid">
+          <AccessPanel onConnect={(key, keep) => onKey(key, keep)} />
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      {demoNotice}
       <div className="console__bar">
         <p className="label">
           <span className="rec-dot" data-live="true" aria-hidden="true" /> Connected

@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 
 import { ApiError, api } from "../../lib/api";
+import { DEMO_KEY } from "../../lib/demo";
 import { Panel } from "../Panel";
 
 type AccessPanelProps = {
@@ -29,10 +30,9 @@ export function AccessPanel({ onConnect }: AccessPanelProps) {
   const [keepForTab, setKeepForTab] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const demoKey = DEMO_KEY;
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    const candidate = value.trim();
+  const connect = async (candidate: string) => {
     if (!candidate) {
       setError("Enter the API key first.");
       return;
@@ -48,6 +48,11 @@ export function AccessPanel({ onConnect }: AccessPanelProps) {
     } finally {
       setChecking(false);
     }
+  };
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void connect(value.trim());
   };
 
   return (
@@ -75,6 +80,25 @@ export function AccessPanel({ onConnect }: AccessPanelProps) {
           {checking ? "Checking" : "Connect"}
         </button>
       </form>
+
+      {demoKey && (
+        <div className="demo-key">
+          <p className="label">
+            Public demo key <span className="mono demo-key__value">{demoKey}</span>
+          </p>
+          <button
+            type="button"
+            className="button button--quiet label"
+            disabled={checking}
+            onClick={() => {
+              setValue(demoKey);
+              void connect(demoKey);
+            }}
+          >
+            Use demo key
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="notice notice--error" role="alert">
