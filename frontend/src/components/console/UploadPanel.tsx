@@ -60,10 +60,34 @@ export function UploadPanel({ apiKey, onUploaded }: UploadPanelProps) {
         onDrop={onDrop}
       >
         <input className="visually-hidden" type="file" accept=".csv,text/csv" onChange={onChoose} disabled={busy} />
-        <span className="slot__window" aria-hidden="true">
-          <span className="slot__reel" />
-          <span className="slot__reel" />
-        </span>
+        <svg className="slot__window" viewBox="0 0 150 50" aria-hidden="true">
+          <path
+            d="M13 1.5 H137 L148.5 13 V37 L137 48.5 H13 L1.5 37 V13 Z"
+            fill="none"
+            stroke="var(--ink)"
+            strokeWidth={2}
+            strokeLinejoin="round"
+          />
+          {[46, 104].map((cx) => (
+            <g key={cx} className="slot__reel">
+              <circle cx={cx} cy={25} r={13} fill="none" stroke="var(--ink)" strokeWidth={3} />
+              <circle cx={cx} cy={25} r={3} fill="var(--ink)" />
+              {[0, 120, 240].map((angle) => (
+                <line
+                  key={angle}
+                  x1={cx}
+                  y1={25}
+                  x2={cx + 11 * Math.cos((angle * Math.PI) / 180)}
+                  y2={25 + 11 * Math.sin((angle * Math.PI) / 180)}
+                  stroke="var(--ink)"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                />
+              ))}
+            </g>
+          ))}
+          <line x1={59} y1={25} x2={91} y2={25} stroke="var(--ink)" strokeWidth={1.5} strokeDasharray="3 3" />
+        </svg>
         <span className="label">{busy ? "Checking the file" : "Drop a CSV here, or choose a file"}</span>
         <span className="mono slot__hint">Up to 10 MiB · 100,000 rows · 200 columns</span>
       </label>

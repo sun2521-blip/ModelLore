@@ -363,23 +363,44 @@ main {
   grid-column: 1 / -1;
 }
 
+/*
+ * Panels are drawn like a technical drawing rather than boxed: an ink title
+ * tab and a top rule, with corner brackets at the other corners.
+ */
 .panel {
+  --corner: 18px;
   position: relative;
-  padding: 16px 20px 20px;
-  border: var(--line) solid var(--ink);
-  border-radius: 10px;
-  background: none;
+  padding: 0 22px 22px;
+  border: 0;
   scroll-margin-top: 96px;
+  background:
+    linear-gradient(var(--ink) 0 0) left top / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) right top / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) left bottom / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) left bottom / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) right bottom / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) right bottom / var(--corner) var(--line);
+  background-repeat: no-repeat;
 }
 
 .panel__head {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  align-items: flex-start;
+  margin: 0 -22px 20px;
+}
+
+.panel__tab {
+  display: inline-flex;
   align-items: baseline;
   gap: 12px;
-  padding-bottom: 10px;
-  margin-bottom: 16px;
-  border-bottom: var(--line) solid var(--ink);
+  margin: 0;
+  padding: 8px 34px 8px 22px;
+  background: var(--ink);
+  color: var(--sage);
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 100%, 0 100%);
 }
 
 .panel__index {
@@ -387,18 +408,14 @@ main {
   font-weight: 500;
 }
 
-.panel__name {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.panel__state {
-  padding: 2px 9px;
-  border: var(--line) solid var(--ink);
-  border-radius: 99px;
-  font-size: 10px;
-  white-space: nowrap;
+.panel__rule {
+  display: flex;
+  flex: 1;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 33px;
+  padding: 6px 22px 0 16px;
+  border-top: var(--line) solid var(--ink);
 }
 
 .panel__detail {
@@ -412,7 +429,64 @@ main {
   color: var(--ink-soft);
 }
 
-/* Controls */
+/*
+ * Keys: buttons, toggles and badges are chamfered like tape-deck buttons.
+ * Two layers draw them, an ink edge and a face, so outlined keys get a
+ * crisp border and the element itself can still show a focus ring.
+ */
+.button,
+.toggle__option,
+.panel__state {
+  --cut: 11px;
+  --key-edge: var(--ink);
+  --key-face: var(--sage);
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: none;
+}
+
+.button::before,
+.toggle__option::before,
+.panel__state::before,
+.button::after,
+.toggle__option::after,
+.panel__state::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  transition: background-color 160ms ease;
+}
+
+.button::before,
+.toggle__option::before,
+.panel__state::before {
+  inset: 0;
+  background: var(--key-edge);
+  clip-path: polygon(
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% 50%,
+    calc(100% - var(--cut)) 100%,
+    var(--cut) 100%,
+    0 50%
+  );
+}
+
+.button::after,
+.toggle__option::after,
+.panel__state::after {
+  inset: var(--line);
+  background: var(--key-face);
+  clip-path: polygon(
+    calc(var(--cut) - 0.6px) 0,
+    calc(100% - var(--cut) + 0.6px) 0,
+    100% 50%,
+    calc(100% - var(--cut) + 0.6px) 100%,
+    calc(var(--cut) - 0.6px) 100%,
+    0 50%
+  );
+}
 
 .button {
   display: inline-flex;
@@ -420,13 +494,10 @@ main {
   justify-content: center;
   gap: 9px;
   min-height: 38px;
-  padding: 0 18px;
-  border: var(--line) solid var(--ink);
-  border-radius: 99px;
-  background: transparent;
+  padding: 0 calc(16px + var(--cut));
   cursor: pointer;
   text-decoration: none;
-  transition: background-color 160ms ease, color 160ms ease;
+  transition: color 160ms ease;
 }
 
 .button:disabled {
@@ -436,36 +507,43 @@ main {
 
 /* The main action: ink at rest, orange only while it is actually running. */
 .button--primary {
-  background: var(--ink);
-  border-color: var(--ink);
+  --key-face: var(--ink);
   color: var(--sage);
 }
 
 .button--primary:hover:not(:disabled) {
-  background: var(--ink-soft);
+  --key-face: var(--ink-soft);
 }
 
 .button--primary[data-live="true"] {
-  background: var(--signal);
+  --key-face: var(--signal);
   color: var(--ink);
   opacity: 1;
 }
 
 .button--ink {
-  background: var(--ink);
+  --key-face: var(--ink);
   color: var(--signal);
 }
 
 .button--ink:hover {
-  background: transparent;
+  --key-face: var(--signal);
   color: var(--ink);
 }
 
 .button--quiet:hover:not(:disabled) {
-  background: var(--ink);
+  --key-face: var(--ink);
   color: var(--sage);
 }
 
+.panel__state {
+  --cut: 7px;
+  padding: 3px 14px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* Fields: an underline with end ticks, like a dimension line. */
 .field {
   display: grid;
   gap: 6px;
@@ -474,15 +552,27 @@ main {
 
 .field__input {
   width: 100%;
-  min-height: 38px;
-  padding: 6px 12px;
-  border: var(--line) solid var(--ink);
-  border-radius: 8px;
-  background: none;
+  min-height: 36px;
+  padding: 6px 4px 7px;
+  border: 0;
+  border-bottom: var(--line) solid var(--ink);
+  border-radius: 0;
+  background:
+    linear-gradient(var(--ink) 0 0) left bottom / var(--line) 10px,
+    linear-gradient(var(--ink) 0 0) right bottom / var(--line) 10px;
+  background-repeat: no-repeat;
+}
+
+.field__input:focus-visible {
+  outline: none;
+  border-bottom: 2px solid var(--signal);
+  background-image:
+    linear-gradient(var(--signal) 0 0),
+    linear-gradient(var(--signal) 0 0);
 }
 
 .field--compact .field__input {
-  min-height: 34px;
+  min-height: 32px;
 }
 
 .check {
@@ -497,17 +587,15 @@ main {
   accent-color: var(--ink);
 }
 
+/* Notices: a marked line of text rather than a box. */
 .notice {
   margin: 14px 0 0;
-  padding: 10px 14px;
-  border: var(--line) dashed var(--ink);
-  border-radius: 8px;
+  padding: 6px 0 6px 14px;
+  border-left: 5px solid var(--ink);
 }
 
 .notice--error {
-  border-style: solid;
-  border-color: var(--signal);
-  border-left-width: 5px;
+  border-left-color: var(--signal);
 }
 
 /* 00 Access */
@@ -527,21 +615,29 @@ main {
 /* 01 Insert dataset: a slot with a cassette window */
 
 .slot {
+  --corner: 16px;
   display: grid;
   justify-items: center;
   gap: 8px;
   padding: 22px 16px 18px;
-  border: var(--line) dashed var(--ink);
-  border-radius: 10px;
   text-align: center;
   cursor: pointer;
   transition: background-color 160ms ease;
+  background:
+    linear-gradient(var(--ink) 0 0) left top / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) left top / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) right top / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) right top / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) left bottom / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) left bottom / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) right bottom / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) right bottom / var(--corner) var(--line);
+  background-repeat: no-repeat;
 }
 
 .slot:hover,
 .slot[data-dragging="true"] {
-  background: var(--sage-light);
-  border-style: solid;
+  background-color: var(--sage-light);
 }
 
 .slot:focus-within {
@@ -550,25 +646,14 @@ main {
 }
 
 .slot__window {
-  display: flex;
-  gap: 34px;
-  align-items: center;
-  justify-content: center;
   width: 150px;
-  height: 46px;
+  height: auto;
   margin-bottom: 4px;
-  border: var(--line) solid var(--ink);
-  border-radius: 10px;
 }
 
 .slot__reel {
-  width: 26px;
-  height: 26px;
-  border: 3px solid var(--ink);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, var(--ink) 0 3px, transparent 3.5px),
-    conic-gradient(from 0deg, var(--ink) 0 8%, transparent 8% 33%, var(--ink) 33% 41%, transparent 41% 66%, var(--ink) 66% 74%, transparent 74%);
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .slot[data-busy="true"] .slot__reel {
@@ -617,6 +702,7 @@ main {
 
 .toggle {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -624,12 +710,12 @@ main {
 }
 
 .toggle__option {
+  --cut: 10px;
   display: inline-flex;
   align-items: center;
   min-height: 34px;
-  padding: 0 14px;
-  border: var(--line) solid var(--ink);
-  border-radius: 99px;
+  padding: 0 calc(12px + var(--cut));
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -640,7 +726,7 @@ main {
 }
 
 .toggle__option[data-active="true"] {
-  background: var(--ink);
+  --key-face: var(--ink);
   color: var(--sage);
 }
 
@@ -693,8 +779,8 @@ main {
   position: relative;
   height: clamp(220px, 32vw, 340px);
   margin: 0 0 18px;
-  border: var(--line) solid var(--ink);
-  border-radius: 8px;
+  border-top: var(--line) solid var(--ink);
+  border-bottom: var(--line) solid var(--ink);
   overflow: hidden;
   background:
     repeating-linear-gradient(
@@ -782,18 +868,17 @@ main {
   display: grid;
   grid-template-columns: auto auto;
   gap: 2px 18px;
-  padding: 7px 10px;
-  border: var(--line) solid var(--ink);
-  border-radius: 6px;
+  padding: 7px 24px 7px 10px;
   background: var(--signal);
   font-size: 11.5px;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
 }
 
 .chip__tag {
   justify-self: end;
   padding: 0 4px;
-  border: var(--line) solid var(--ink);
-  border-radius: 3px;
+  background: var(--ink);
+  color: var(--signal);
   font-size: 10px;
 }
 
@@ -945,10 +1030,20 @@ main {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 10px 12px;
   align-items: end;
+  --corner: 14px;
   margin: 0;
   padding: 12px 14px 14px;
-  border: var(--line) solid var(--ink);
-  border-radius: 8px;
+  border: 0;
+  background:
+    linear-gradient(var(--ink) 0 0) left top / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) left top / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) right top / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) right top / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) left bottom / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) left bottom / var(--corner) var(--line),
+    linear-gradient(var(--ink) 0 0) right bottom / var(--line) var(--corner),
+    linear-gradient(var(--ink) 0 0) right bottom / var(--corner) var(--line);
+  background-repeat: no-repeat;
 }
 
 .play__row legend {
@@ -981,11 +1076,10 @@ main {
 .predictions li {
   display: grid;
   gap: 6px;
-  padding: 12px 14px;
-  border: var(--line) solid var(--ink);
-  border-radius: 8px;
+  padding: 12px 18px;
   background: var(--ink);
   color: var(--sage);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
 }
 
 .predictions__value {
@@ -1102,11 +1196,12 @@ main {
   place-items: center;
   min-width: 26px;
   height: 20px;
-  padding: 0 4px;
+  padding: 0 8px;
   background: var(--ink);
   color: var(--sage);
   font-size: 10px;
   letter-spacing: 0;
+  clip-path: polygon(5px 0, calc(100% - 5px) 0, 100% 50%, calc(100% - 5px) 100%, 5px 100%, 0 50%);
 }
 
 .bottombar__tab {
