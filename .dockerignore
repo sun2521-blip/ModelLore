@@ -22,7 +22,10 @@ MLFlowHub-env
 .vscode
 .idea
 *.pdf
+*.mp4
 checkpoints.md
+frontend/node_modules
+frontend/dist
 mlruns
 artifacts
 data/uploads

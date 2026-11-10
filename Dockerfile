@@ -1,4 +1,17 @@
 
+# Stage 1: build the console. Only its static files reach the final image.
+FROM node:24-slim AS console
+
+WORKDIR /console
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
+
+
+# Stage 2: the API, which also serves the built console at /.
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -15,6 +28,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin modellore
 
 COPY . .
+COPY --from=console /console/dist ./frontend/dist
 
 RUN mkdir -p data/uploads artifacts lineage mlruns \
     && chown -R modellore:modellore data/uploads artifacts lineage mlruns
