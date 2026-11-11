@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import mlflow
+import pandas as pd
 import pytest
 
 import ml.training.train as training_module
@@ -200,5 +201,47 @@ model:
         encoding="utf-8",
     )
 
-    with pytest.raises(TrainingInputError, match="stratified"):
+    with pytest.raises(
+        TrainingInputError,
+        match=r"Target column 'target' has 3 different values, and 2 of them appear on only one row",
+    ):
         training_module.train_model(config_path=str(config_path))
+
+
+@pytest.mark.parametrize(
+    ("values", "test_size", "expected"),
+    [
+        # Every value unique, like a website or an ID column.
+        (
+            [f"site-{i}" for i in range(10)],
+            0.2,
+            "has 10 different values, and 10 of them appear on only one row",
+        ),
+        # Exactly one value seen once: singular wording.
+        (
+            ["lbl-a", "lbl-a", "lbl-b", "lbl-b", "lbl-c"],
+            0.2,
+            "has 3 different values, and 1 of them appears on only one row",
+        ),
+        # Ten classes with two rows each, but only four rows held back for testing.
+        (
+            [f"class-{i}" for i in range(10)] * 2,
+            0.2,
+            "has 10 different values, but only 4 rows (20% of 20) are held back for testing",
+        ),
+        # A large test_size leaves too few training rows (only reachable from a YAML config).
+        (["lbl-a", "lbl-b", "lbl-c"] * 2, 0.6, "only 2 rows are left for training once 60% are held back"),
+    ],
+)
+def test_split_problem_names_the_case_with_counts(values, test_size, expected):
+    message = training_module.split_problem(pd.Series(values), "website", test_size)
+
+    assert message is not None
+    assert message.startswith("Target column 'website' ")
+    assert expected in message
+    # Counts only: none of the target's values ever reach the message.
+    assert not any(value in message for value in set(values))
+
+
+def test_split_problem_is_quiet_when_the_split_works():
+    assert training_module.split_problem(pd.Series(["a", "b", "c"] * 10), "target", 0.2) is None

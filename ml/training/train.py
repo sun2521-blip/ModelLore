@@ -1,4 +1,5 @@
 
+import math
 from uuid import uuid4
 
 import mlflow
@@ -24,6 +25,52 @@ from ml.training.model_factory import create_model
 from ml.training.trainer import train
 from pathlib import Path
 from ml.lineage import save_lineage, update_lineage_status
+
+
+def split_problem(y, target_name, test_size):
+    """Say why y cannot be split into stratified training and test rows, or None if it can.
+
+    The message gives counts only, never the target's values, so it is safe to
+    show in the console and store on the job.
+    """
+    counts = y.value_counts()
+    distinct = len(counts)
+    rows = len(y)
+
+    seen_once = int((counts < 2).sum())
+    if seen_once:
+        verb = "appears" if seen_once == 1 else "appear"
+        return (
+            f"Target column '{target_name}' has {distinct:,} different values, and "
+            f"{seen_once:,} of them {verb} on only one row. Each value needs at least "
+            "two rows, one to learn from and one to test on. Choose a target column "
+            "that holds categories, such as yes/no or a customer segment."
+        )
+
+    # The same arithmetic scikit-learn uses for a fractional test_size.
+    test_rows = math.ceil(test_size * rows)
+    train_rows = rows - test_rows
+    if test_rows < distinct:
+        return (
+            f"Target column '{target_name}' has {distinct:,} different values, but only "
+            f"{test_rows:,} rows ({test_size:.0%} of {rows:,}) are held back for testing, "
+            "so not every value can be tested. Choose a target with fewer categories, "
+            "or add rows."
+        )
+    if train_rows < distinct:
+        return (
+            f"Target column '{target_name}' has {distinct:,} different values, but only "
+            f"{train_rows:,} rows are left for training once {test_size:.0%} are held "
+            "back for testing. Lower training.test_size, or add rows."
+        )
+    return None
+
+
+def ensure_splittable(y, target_name, test_size):
+    """Stop with a readable TrainingInputError when the split cannot work."""
+    problem = split_problem(y, target_name, test_size)
+    if problem:
+        raise TrainingInputError(problem)
 
 
 def train_model(
@@ -79,6 +126,12 @@ def train_model(
     config_hash = hash_config(config)
 
     # Split dataset
+    ensure_splittable(
+        y,
+        dataset_settings.get("target_column", "target"),
+        training_config.test_size,
+    )
+
     try:
         X_train, X_test, y_train, y_test = train_test_split(
             X,
@@ -89,8 +142,8 @@ def train_model(
         )
     except ValueError as exc:
         raise TrainingInputError(
-            "Each target class needs enough rows for a stratified "
-            "train/test split; add rows or lower training.test_size."
+            "The target column could not be split into training and test rows. "
+            "Each value needs at least two rows."
         ) from exc
 
     preprocessor = create_preprocessor(X_train)

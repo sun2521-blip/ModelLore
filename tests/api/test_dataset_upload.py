@@ -207,6 +207,39 @@ def test_train_uses_custom_target_column(
     )
 
 
+def test_training_on_a_column_of_unique_values_explains_why(
+    api_client, tmp_path, monkeypatch
+):
+    # The console's path: upload a contact-list style CSV, then train on a column
+    # where every row is different (like a website). Nothing is mocked.
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(main, "ARTIFACT_DIR", tmp_path / "artifacts")
+    monkeypatch.setattr(main, "LINEAGE_DIR", tmp_path / "lineage")
+    rows = "".join(f"{visits},https://site-{visits}.example\n" for visits in range(10))
+    upload = api_client.post(
+        "/datasets/upload",
+        files={"file": ("contacts.csv", f"visits,website\n{rows}".encode(), "text/csv")},
+    )
+    assert upload.status_code == 200
+    dataset_id = upload.json()["dataset_id"]
+
+    response = api_client.post(
+        "/train", json={"dataset_id": dataset_id, "target_column": "website"}
+    )
+
+    expected = (
+        "Target column 'website' has 10 different values, and 10 of them appear on "
+        "only one row."
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith(expected)
+    assert "site-" not in response.json()["detail"]
+
+    job = api_client.get("/jobs").json()["items"][0]
+    assert job["status"] == "FAILED"
+    assert job["error_message"] == response.json()["detail"]
+
+
 
 def test_upload_counts_rows_with_embedded_newlines(
     api_client, tmp_path, monkeypatch
