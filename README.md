@@ -14,6 +14,8 @@ Think of it as a small mission control for machine learning experiments.
 
 And this is just the beginning.
 
+Want to see it before installing anything? A small public demo of the console is running at https://frontend-delta-dun-67.vercel.app.
+
 ---
 
 ## The mission
@@ -294,6 +296,12 @@ Curl commands are honest, but they don't make it easy to see a model's story at 
 
 The API serves the console itself, from the same address, so the browser never has to talk to another origin.
 
+![The console's opening screen: the ModelLore wordmark on a data, config, run, and model track](docs/images/console-hero.webp)
+
+### Try it live
+
+A public demo runs at https://frontend-delta-dun-67.vercel.app. It shows a shared demo key on the page, so anyone can insert a dataset, record, trace, and play, within small limits. Every visitor shares it, and it forgets everything when it naps, so don't upload anything private. [Deploy it](#deploy-it) explains how it is hosted and what that trades away.
+
 ### Build it once
 
 ```bash
@@ -318,6 +326,10 @@ Then start the API as in [Getting started](#5-run-the-api) and open http://127.0
 - **04 Trace:** an exploded drawing of the selected model's lineage, from the dataset at the base, through its configuration and training run, up to the model artifact, with each layer's fingerprint.
 
 - **05 Play:** fill in a row of features and press play to get a prediction from the selected model.
+
+![Panels 01 and 02 after a run: an inserted CSV with its fingerprint, and a finished recording with its metrics and run IDs](docs/images/console-record.webp)
+
+![Panel 04, Trace: the exploded lineage drawing beside the model's spec sheet](docs/images/console-trace.webp)
 
 ### Working on the console
 

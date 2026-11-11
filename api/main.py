@@ -56,7 +56,7 @@ from ml.inference.predict import (
 from ml.training.train import train_model
 
 
-app = FastAPI(title="ModelLore API", version="0.5.0")
+app = FastAPI(title="ModelLore API", version="0.6.0")
 
 # Logs name the event, the IDs involved, and the exception type. They never
 # include exception messages, tracebacks, file paths, dataset values, or keys.
