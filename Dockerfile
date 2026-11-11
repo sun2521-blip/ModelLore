@@ -30,11 +30,13 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin modellore
 COPY . .
 COPY --from=console /console/dist ./frontend/dist
 
-RUN mkdir -p data/uploads artifacts lineage mlruns \
-    && chown -R modellore:modellore data/uploads artifacts lineage mlruns
+# data/db holds a SQLite database when no PostgreSQL is configured (the hosted demo).
+RUN mkdir -p data/uploads data/db artifacts lineage mlruns \
+    && chown -R modellore:modellore data/uploads data/db artifacts lineage mlruns
 
 USER modellore
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]
+# Hosts such as Render choose the port through $PORT; Docker Compose uses 8000.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

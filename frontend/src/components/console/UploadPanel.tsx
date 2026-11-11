@@ -1,6 +1,6 @@
-import { type ChangeEvent, type DragEvent, useState } from "react";
+import { type ChangeEvent, type DragEvent, useEffect, useState } from "react";
 
-import { ApiError, api, type UploadResult } from "../../lib/api";
+import { ApiError, api, fetchLimits, type Limits, type UploadResult } from "../../lib/api";
 import { readCsvHeader } from "../../lib/csv";
 import { shortHash } from "../../lib/format";
 import { Panel } from "../Panel";
@@ -16,6 +16,17 @@ export function UploadPanel({ apiKey, onUploaded }: UploadPanelProps) {
   const [dragging, setDragging] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [limits, setLimits] = useState<Limits | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchLimits(controller.signal).then((value) => {
+      if (!controller.signal.aborted) {
+        setLimits(value);
+      }
+    });
+    return () => controller.abort();
+  }, []);
 
   const upload = async (file: File | undefined) => {
     if (!file) {
@@ -89,7 +100,11 @@ export function UploadPanel({ apiKey, onUploaded }: UploadPanelProps) {
           <line x1={59} y1={25} x2={91} y2={25} stroke="var(--ink)" strokeWidth={1.5} strokeDasharray="3 3" />
         </svg>
         <span className="label">{busy ? "Checking the file" : "Drop a CSV here, or choose a file"}</span>
-        <span className="mono slot__hint">Up to 10 MiB · 100,000 rows · 200 columns</span>
+        <span className="mono slot__hint">
+          {limits
+            ? `Up to ${limits.max_upload_mb} MiB · ${limits.max_upload_rows.toLocaleString("en")} rows · ${limits.max_upload_columns} columns`
+            : "Size, row and column limits are set by the server"}
+        </span>
       </label>
 
       {error && (

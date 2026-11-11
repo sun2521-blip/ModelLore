@@ -89,6 +89,14 @@ export type TrainResult = {
 
 export type FeatureValue = number | string | boolean | null;
 
+export type Limits = {
+  max_upload_mb: number;
+  max_upload_rows: number;
+  max_upload_columns: number;
+  max_predict_rows: number;
+  rate_limits_per_minute: Record<string, number>;
+};
+
 export type PredictResult = {
   lineage_run_id: string;
   predictions: Array<number | string>;
@@ -227,6 +235,16 @@ export async function fetchHealth(signal?: AbortSignal): Promise<boolean> {
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/** The limits the server enforces. Public, so the console can show them before anyone logs in. */
+export async function fetchLimits(signal?: AbortSignal): Promise<Limits | null> {
+  try {
+    const response = await fetch("/limits", { signal });
+    return response.ok ? ((await response.json()) as Limits) : null;
+  } catch {
+    return null;
   }
 }
 

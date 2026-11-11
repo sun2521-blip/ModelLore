@@ -19,6 +19,7 @@ const API_PATHS = [
   "/predict",
   "/lineage",
   "/openapi.json",
+  "/limits",
   "/docs",
 ];
 

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/health", "destination": "https://modellore-api.onrender.com/health" },
+    { "source": "/health/:path*", "destination": "https://modellore-api.onrender.com/health/:path*" },
+    { "source": "/limits", "destination": "https://modellore-api.onrender.com/limits" },
+    { "source": "/datasets", "destination": "https://modellore-api.onrender.com/datasets" },
+    { "source": "/datasets/:path*", "destination": "https://modellore-api.onrender.com/datasets/:path*" },
+    { "source": "/train", "destination": "https://modellore-api.onrender.com/train" },
+    { "source": "/jobs", "destination": "https://modellore-api.onrender.com/jobs" },
+    { "source": "/jobs/:path*", "destination": "https://modellore-api.onrender.com/jobs/:path*" },
+    { "source": "/models", "destination": "https://modellore-api.onrender.com/models" },
+    { "source": "/models/:path*", "destination": "https://modellore-api.onrender.com/models/:path*" },
+    { "source": "/runs/:path*", "destination": "https://modellore-api.onrender.com/runs/:path*" },
+    { "source": "/predict", "destination": "https://modellore-api.onrender.com/predict" },
+    { "source": "/lineage/:path*", "destination": "https://modellore-api.onrender.com/lineage/:path*" },
+    { "source": "/openapi.json", "destination": "https://modellore-api.onrender.com/openapi.json" },
+    { "source": "/docs", "destination": "https://modellore-api.onrender.com/docs" },
+    { "source": "/docs/:path*", "destination": "https://modellore-api.onrender.com/docs/:path*" }
+  ],
+  "headers": [
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}
