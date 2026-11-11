@@ -1158,6 +1158,42 @@ main {
   }
 }
 
+.marquee__toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The strip clips its overflow, so the focus ring sits inside it. */
+.marquee__toggle:focus-visible {
+  outline-offset: -6px;
+}
+
+.marquee[data-paused="true"] .marquee__track {
+  animation-play-state: paused;
+}
+
+@media (hover: hover) {
+  .marquee:hover .marquee__track {
+    animation-play-state: paused;
+  }
+}
+
+/* Visitors who asked for less motion still get this one strip, three times slower.
+   Everything else holds still for them (see base.css). */
+@media (prefers-reduced-motion: reduce) {
+  .marquee__track {
+    animation-duration: 114s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 .finale {
   position: relative;
   display: grid;

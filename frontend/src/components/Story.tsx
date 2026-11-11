@@ -1,25 +1,39 @@
+import { useState } from "react";
+
 import { useInView } from "../hooks/useInView";
 
 const MARQUEE_WORDS = ["Train it", "Track it", "Trace it"];
 
-/** A slow tape of giant type between the hero and the console. */
+/**
+ * A slow tape of giant type between the hero and the console, looping right to left.
+ * Hover holds it; a click, tap or key press keeps it paused until pressed again.
+ */
 export function Marquee() {
+  const [paused, setPaused] = useState(false);
   const sequence = [...MARQUEE_WORDS, ...MARQUEE_WORDS];
 
   return (
-    <section className="marquee" aria-label="Train it. Track it. Trace it.">
-      <div className="marquee__track" aria-hidden="true">
-        {[0, 1].map((copy) => (
-          <span key={copy} className="marquee__run display">
-            {sequence.map((word, index) => (
-              <span key={`${copy}-${index}`} className="marquee__word">
-                {word}
-                <span className="marquee__dot" />
-              </span>
-            ))}
-          </span>
-        ))}
-      </div>
+    <section className="marquee" aria-label="Train it. Track it. Trace it." data-paused={paused}>
+      <button
+        type="button"
+        className="marquee__toggle"
+        aria-label="Pause the moving title"
+        aria-pressed={paused}
+        onClick={() => setPaused((value) => !value)}
+      >
+        <span className="marquee__track" aria-hidden="true">
+          {[0, 1].map((copy) => (
+            <span key={copy} className="marquee__run display">
+              {sequence.map((word, index) => (
+                <span key={`${copy}-${index}`} className="marquee__word">
+                  {word}
+                  <span className="marquee__dot" />
+                </span>
+              ))}
+            </span>
+          ))}
+        </span>
+      </button>
     </section>
   );
 }
