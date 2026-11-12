@@ -502,6 +502,8 @@ uv run python -m ml.training.train configs/my_dataset.yaml
 
 Replace the dataset path and target column with the values appropriate for your data. The current training pipeline is designed for classification datasets, and the target must contain enough examples of each class for a stratified train-test split. Every row needs a value in every column: training rejects datasets with missing feature or target values.
 
+Not every column can be a target. A column where nearly every row is different, like an ID, an email address, or a website, can't be one: see [Current limitations](#current-limitations).
+
 ---
 
 ## API usage
@@ -852,6 +854,44 @@ That gives us a starting point for answering questions like:
 These fingerprints are identifiers, not proof that a model is correct or secure. Their purpose is to make experiment history easier to trace.
 
 Eventually, I want this lineage to extend across model versions, deployments, and predictions. A model should have a history, not just a filename.
+
+---
+
+## Current limitations
+
+ModelLore is deliberately small, and some of its edges are sharp. These are the ones you are most likely to meet.
+
+### A target column has to repeat
+
+The target column is the answer the model learns to predict, so it has to be a category that repeats: `yes` or `no`, a customer segment, a species. A column where nearly every row is different, such as an ID, an email address, a phone number, a website, or a date, can't be a target. When every answer appears exactly once, there is nothing to learn.
+
+ModelLore checks this before it trains. It holds back 20% of the rows for testing (`training.test_size`), and every value of the target has to show up in both the training rows and the test rows. When that can't happen, training stops and says why, using counts only and never your data:
+
+- **A value appears on only one row:** "Target column 'website' has 1,000 different values, and 1,000 of them appear on only one row." Pick a column that holds categories.
+
+- **More values than test rows:** "Target column 'country' has 240 different values, but only 200 rows (20% of 1,000) are held back for testing, so not every value can be tested." Pick a target with fewer categories, or add rows.
+
+- **Too few training rows:** this can only happen when you raise `training.test_size` in a YAML configuration. Lower it, or add rows.
+
+A few things that help:
+
+- **Check the target before you press record.** In the console, panel 02 picks a column named `target` if your file has one, and otherwise the last column. In many files the last column is a website or a date, so choose the target yourself.
+
+- **Predicting a number?** ModelLore trains classifiers, so it can't predict a number such as a spending score directly. Add a column that sorts the number into bands (`low`, `medium`, `high`) and use that as the target.
+
+- **A contact list has no target.** Names, emails, and phone numbers describe who someone is, not an outcome. The dataset needs a column that records what happened, such as whether a customer stayed or left.
+
+### Other edges
+
+- **Classification only, with one model family:** every run trains a random forest classifier. Regression and other model types are out of scope for now.
+
+- **Every cell needs a value:** training rejects datasets with missing feature or target values.
+
+- **Fixed settings in the console and API:** training there always uses 50 trees, a maximum depth of 5, 20% of rows for testing, and random seed 42. To change them, write a YAML configuration and train from the command line, as in [Bring your own dataset](#bring-your-own-dataset).
+
+- **Training waits for the result:** a training request returns when training finishes. That takes seconds locally and around half a minute on the free public demo.
+
+- **Narrower limits live with their topics:** [run verification](#verify-a-training-run), [API requests](#api-behavior-and-current-limits), and [security](#what-is-not-covered).
 
 ---
 
